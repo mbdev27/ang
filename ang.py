@@ -51,12 +51,7 @@ excel_template_df.to_excel(excel_bytes, index=False)
 excel_bytes.seek(0)
 
 st.markdown("**Modelo de tabela Excel para download:**")
-st.download_button(
-    "Baixar modelo Excel",
-    data=excel_bytes,
-    file_name="modelo_estacao_total.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)(xml_template, language="xml")
+st.download_button("Baixar modelo Excel", data=excel_bytes, file_name="modelo_estacao_total.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # Read data
 df = None
