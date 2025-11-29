@@ -42,6 +42,21 @@ sample = pd.DataFrame({
     'Z': ["89°48'20\"","89°36'31\""]
 })
 
+# download model template
+st.download_button(
+    label="Baixar modelo de tabela (CSV)",
+    data=sample.to_csv(index=False).encode('utf-8'),
+    file_name='modelo_tabela_topografia.csv',
+    mime='text/csv'
+)
+
+sample = pd.DataFrame({
+    'EST': ['P1','P1'],
+    'PV': ['P2','P3'],
+    'DI_m': [25.365, 26.285],
+    'Z': ["89°48'20\"","89°36'31\""]
+})
+
 st.markdown("**Modelo de colunas esperado:** `DI_m` (Distância inclinada, metros) e `Z` (ângulo zenital em DMS ou decimal).")
 if st.checkbox("Mostrar exemplo de tabela"):
     st.dataframe(sample)
