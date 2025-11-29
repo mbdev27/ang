@@ -34,26 +34,24 @@ st.header("1) Carregar dados")
 
 uploaded = st.file_uploader("Envie um arquivo CSV ou Excel (opcional)", type=["csv", "xls", "xlsx"]) 
 
-# XML template for download and example table
-xml_template = """<?xml version='1.0' encoding='UTF-8'?>
-<TabelaEstacaoTotal>
-    <Medicao>
-        <EST>P1</EST>
-        <PV>P2</PV>
-        <AnguloHorizontal_PD></AnguloHorizontal_PD>
-        <AnguloHorizontal_PI></AnguloHorizontal_PI>
-        <AnguloZenital_PD></AnguloZenital_PD>
-        <AnguloZenital_PI></AnguloZenital_PI>
-        <DistanciaInclinada_PD></DistanciaInclinada_PD>
-        <DistanciaInclinada_PI></DistanciaInclinada_PI>
-    </Medicao>
-</TabelaEstacaoTotal>
-"""
-st.markdown("**Modelo de tabela XML para download:**")
-st.download_button("Baixar modelo XML", data=xml_template, file_name="modelo_estacao_total.xml", mime="application/xml")
+# Excel template for download
+import pandas as pd
+excel_template_df = pd.DataFrame({
+    'EST': ['P1'],
+    'PV': ['P2'],
+    'AnguloHorizontal_PD': [''],
+    'AnguloHorizontal_PI': [''],
+    'AnguloZenital_PD': [''],
+    'AnguloZenital_PI': [''],
+    'DistanciaInclinada_PD': [''],
+    'DistanciaInclinada_PI': ['']
+})
+excel_bytes = io.BytesIO()
+excel_template_df.to_excel(excel_bytes, index=False)
+excel_bytes.seek(0)
 
-st.markdown("**Modelo XML esperado:** Estrutura contendo tags de medição (EST, PV, ângulos e distâncias). Exemplo abaixo:")
-st.code(xml_template, language="xml")
+st.markdown("**Modelo de tabela Excel para download:**")
+st.download_button("Baixar modelo Excel", data=excel_bytes, file_name="modelo_estacao_total.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")(xml_template, language="xml")
 
 # Read data
 df = None
