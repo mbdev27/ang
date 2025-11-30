@@ -1,11 +1,10 @@
 # app.py
-# UFPE - Calculadora de Ângulos e Distâncias (Método das Direções)
-# Cabeçalho no estilo da folha enviada; identificação lida do Excel;
-# download final em XLSX com figura em JPG.
+# UFPE - Calculadora de Ângulos e Distâncias (Método das Direções para Triângulos)
+# Cabeçalho com identificação lida do Excel; download final em XLSX com figura em JPG.
 
 import io
 import math
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -324,7 +323,7 @@ def tabela_z_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     return tab
 
 # =====================================================================
-#  Distâncias simétricas e 7ª tabela resumo
+#  Distâncias simétricas e Tabela resumo
 # =====================================================================
 
 def tabela_distancias_medias_simetricas(res: pd.DataFrame) -> pd.DataFrame:
@@ -714,11 +713,28 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 #  Leitura da aba de identificação
 # =====================================================================
 
+def _format_data_ddmmaaaa(raw: str) -> str:
+    if not raw:
+        return ""
+    s = str(raw).strip()
+    if s == "":
+        return ""
+    # tenta interpretar como data do pandas
+    try:
+        dt = pd.to_datetime(raw)
+        return dt.strftime("%d/%m/%Y")
+    except Exception:
+        # tenta formatos manuais comuns
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+            try:
+                dt = pd.to_datetime(s, format=fmt)
+                return dt.strftime("%d/%m/%Y")
+            except Exception:
+                continue
+    return s  # se não conseguir, devolve como veio
+
+
 def ler_identificacao_from_df(df_id: pd.DataFrame) -> Dict[str, str]:
-    """
-    Espera uma tabela com colunas: Campo | Valor
-    Campos relevantes: Professor(a), Equipamento, Data, Local, Patrimônio.
-    """
     id_map = {
         "Professor(a)": "",
         "Equipamento": "",
@@ -729,8 +745,6 @@ def ler_identificacao_from_df(df_id: pd.DataFrame) -> Dict[str, str]:
     if df_id is None or df_id.empty:
         return id_map
 
-    # tolerante ao nome das colunas
-    cols = {c.lower(): c for c in df_id.columns}
     campo_col = None
     valor_col = None
     for c in df_id.columns:
@@ -743,7 +757,11 @@ def ler_identificacao_from_df(df_id: pd.DataFrame) -> Dict[str, str]:
 
     for _, row in df_id.iterrows():
         campo = str(row[campo_col]).strip()
-        val = "" if pd.isna(row[valor_col]) else str(row[valor_col]).strip()
+        val_raw = "" if pd.isna(row[valor_col]) else row[valor_col]
+        if campo == "Data":
+            val = _format_data_ddmmaaaa(val_raw)
+        else:
+            val = "" if pd.isna(val_raw) else str(val_raw).strip()
         if campo in id_map:
             id_map[campo] = val
     return id_map
@@ -794,10 +812,11 @@ def cabecalho_ufpe(info_id: Dict[str, str]):
 
         st.markdown("</div>", unsafe_allow_html=True)
 
+        # Título atualizado
         st.markdown(
             """
             <p style="margin-top:0.9rem;font-size:1.5rem;font-weight:800;color:#7f0000;">
-                Calculadora de Ângulos e Distâncias – Método das Direções
+                Calculadora de Ângulos e Distâncias – Método das Direções para Triângulos
             </p>
             <p style="font-size:0.92rem;">
                 Esta ferramenta auxilia no processamento das leituras obtidas com estação total,
@@ -814,8 +833,8 @@ def cabecalho_ufpe(info_id: Dict[str, str]):
                 <b>Preenchimento dos dados de identificação:</b><br>
                 Os campos Professor(a), Equipamento, Data, Local e Patrimônio são
                 lidos automaticamente da aba <b>Identificacao</b> do modelo Excel.
-                Caso algum campo venha em branco, ele poderá ser completado manualmente
-                no arquivo exportado.
+                A data é exibida no formato <b>DD/MM/AAAA</b>. Caso algum campo venha em branco,
+                ele poderá ser completado manualmente no arquivo exportado.
             </div>
             """,
             unsafe_allow_html=True,
@@ -867,6 +886,7 @@ def gerar_modelo_excel():
 # =====================================================================
 
 def secao_modelo_e_upload():
+    # 1. Modelo de planilha
     st.markdown(
         """
         <div class="section-title">
@@ -894,6 +914,7 @@ def secao_modelo_e_upload():
         unsafe_allow_html=True,
     )
 
+    # 2. Carregar dados de campo
     st.markdown(
         """
         <div class="section-title">
@@ -924,7 +945,7 @@ def processar_upload(uploaded) -> Tuple[Optional[pd.DataFrame], Dict[str, str]]:
 
     try:
         xls = pd.ExcelFile(uploaded)
-        sheet_names = [s.lower() for s in xls.sheet_names]
+
         # aba Identificacao
         sheet_id = None
         for s in xls.sheet_names:
@@ -956,7 +977,9 @@ def processar_upload(uploaded) -> Tuple[Optional[pd.DataFrame], Dict[str, str]]:
     )
 
     df_valid, erros = validar_dataframe(raw_df)
-    st.subheader("Pré-visualização dos dados importados (aba Dados)")
+
+    # Pré-visualização (título ajustado)
+    st.subheader("Pré-visualização dos dados importados")
     cols_to_show = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
     st.dataframe(df_valid[cols_to_show], use_container_width=True)
 
@@ -974,6 +997,7 @@ def processar_upload(uploaded) -> Tuple[Optional[pd.DataFrame], Dict[str, str]]:
 # =====================================================================
 
 def secao_calculos(df_uso: pd.DataFrame):
+    # 3. Cálculo de Hz, Z e distâncias (linha a linha)
     st.markdown(
         """
         <div class="section-title">
@@ -1007,6 +1031,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         )
     st.dataframe(df_linha, use_container_width=True)
 
+    # 4. Medição Angular Horizontal
     st.markdown(
         """
         <div class="section-title">
@@ -1019,6 +1044,7 @@ def secao_calculos(df_uso: pd.DataFrame):
     tab_hz = tabela_hz_por_serie(res)
     st.dataframe(tab_hz, use_container_width=True)
 
+    # 5. Medição Angular Vertical / Zenital
     st.markdown(
         """
         <div class="section-title">
@@ -1031,23 +1057,12 @@ def secao_calculos(df_uso: pd.DataFrame):
     tab_z = tabela_z_por_serie(res)
     st.dataframe(tab_z, use_container_width=True)
 
+    # 6. Tabela resumo (Hz, Z e DH)
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>6. Distâncias médias horizontais simétricas</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    df_dist = tabela_distancias_medias_simetricas(res)
-    st.dataframe(df_dist, use_container_width=True)
-
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>7. Tabela resumo (Hz, Z e DH)</span>
+            <span>6. Tabela resumo (Hz, Z e DH)</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1055,12 +1070,12 @@ def secao_calculos(df_uso: pd.DataFrame):
     resumo = tabela_resumo_final(res, renomear_para_letras=True)
     st.dataframe(resumo, use_container_width=True)
 
-    # ---------- 8. Triângulo com seleção automática ----------
+    # 7. TRIÂNGULO SELECIONADO (CONJUNTO AUTOMÁTICO DE MEDIÇÕES)
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>8. TRIÂNGULO SELECIONADO (CONJUNTO AUTOMÁTICO DE MEDIÇÕES)</span>
+            <span>7. TRIÂNGULO SELECIONADO (CONJUNTO AUTOMÁTICO DE MEDIÇÕES)</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1176,8 +1191,8 @@ def rodape(info_triangulo, figura_buf):
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v14 — cabeçalho com identificação lida do Excel;
-            degradê apenas no cabeçalho; download em XLSX com resumo e figura em JPG.</code>.
+            Versão do app: <code>UFPE_v15 — título para triângulos, data DD/MM/AAAA,
+            seções renumeradas, download em XLSX com resumo e figura em JPG.</code>.
         </p>
         """,
         unsafe_allow_html=True,
@@ -1194,7 +1209,7 @@ def rodape(info_triangulo, figura_buf):
     else:
         st.info(
             "Para habilitar o download do XLSX com a figura, primeiro gere um triângulo "
-            "na seção 8."
+            "na seção 7."
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
