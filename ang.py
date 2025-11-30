@@ -576,12 +576,13 @@ if df_uso is not None:
     )
 
 # -------------------- 4. Croqui gráfico P1–P2–P3 ------------------------
+# -------------------- 4. Croqui gráfico (triângulo P1–P2–P3) ------------------------
 if res is not None:
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>4. Croqui gráfico (P1, P2 e P3)</span>
+            <span>4. Croqui gráfico (triângulo P1–P2–P3)</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -589,81 +590,82 @@ if res is not None:
 
     st.markdown(
         """
-        Representação plana aproximada da relação espacial entre P1, P2 e P3,
-        usando as direções e distâncias horizontais médias a partir das estações.
-        Considera P1 em (0,0) e posiciona P2 e P3 de acordo com as médias das visadas.
+        Representação plana do triângulo formado pelos pontos P1, P2 e P3,
+        usando as direções e distâncias horizontais <b>médias</b> das visadas
+        P1→P2 e P1→P3. P1 é fixo na origem (0, 0).
         """,
         unsafe_allow_html=True,
     )
 
-    # Seleciona apenas linhas com Hz e DH médios válidos
+    # Filtra apenas linhas com Hz e DH médios válidos
     valid = res.dropna(subset=["Hz_med_deg", "DH_med_m"]).copy()
     if valid.empty:
         st.info("Não há dados suficientes (Hz_médio e DH_médio) para gerar o croqui.")
     else:
-        # P1 fixo em (0, 0)
-        coords = {"P1": (0.0, 0.0)}
+        # Calcula médias por par EST–PV
+        grp = valid.groupby(["EST", "PV"], as_index=False).agg({
+            "Hz_med_deg": "mean",
+            "DH_med_m": "mean"
+        })
 
-        # Função auxiliar: se conheço EST, calculo PV
-        def atualizar_coord(est, pv, dh, hz_deg):
-            est_ = str(est).strip().upper()
-            pv_  = str(pv).strip().upper()
-            if est_ not in coords:
-                return
-            x_est, y_est = coords[est_]
-            # Convenção: Hz = 0° no eixo Y positivo, aumentando no sentido horário
-            az = math.radians(hz_deg)
+        # Coordenadas do triângulo
+        coords = {}
+
+        # P1 fixo na origem
+        coords["P1"] = (0.0, 0.0)
+
+        def posicionar_a_partir_de_P1(pv_nome):
+            """Tenta posicionar P2 ou P3 a partir de leituras P1→PV."""
+            pv_up = pv_nome.upper()
+            linha = grp[(grp["EST"].str.upper() == "P1") &
+                        (grp["PV"].str.upper() == pv_up)]
+            if linha.empty:
+                return False
+            dh = float(linha["DH_med_m"].iloc[0])
+            hz = float(linha["Hz_med_deg"].iloc[0])
+            x_est, y_est = coords["P1"]
+            az = math.radians(hz)   # Hz: 0° no norte, sentido horário
             dx = dh * math.sin(az)
             dy = dh * math.cos(az)
-            x_pv = x_est + dx
-            y_pv = y_est + dy
-            if pv_ in coords:
-                # média simples se já existir
-                x_old, y_old = coords[pv_]
-                coords[pv_] = ((x_old + x_pv) / 2.0, (y_old + y_pv) / 2.0)
-            else:
-                coords[pv_] = (x_pv, y_pv)
+            coords[pv_up] = (x_est + dx, y_est + dy)
+            return True
 
-        # usa leituras a partir de P1 para determinar P2 e P3
-        for _, r in valid.iterrows():
-            est = str(r["EST"]).strip().upper()
-            pv  = str(r["PV"]).strip().upper()
-            if est == "P1":  # focamos nas visadas a partir de P1
-                atualizar_coord(est, pv, r["DH_med_m"], r["Hz_med_deg"])
+        # tenta posicionar P2 e P3 a partir de P1
+        tem_p2 = posicionar_a_partir_de_P1("P2")
+        tem_p3 = posicionar_a_partir_de_P1("P3")
 
-        # Se ainda assim não obtive P2 ou P3, tento usar outras estações
-        # como reforço (ex: P2→P1, P3→P1) para amarrar o triângulo
-        if "P2" not in coords or "P3" not in coords:
-            for _, r in valid.iterrows():
-                est = str(r["EST"]).strip().upper()
-                pv  = str(r["PV"]).strip().upper()
-                # se conheço EST, posso posicionar PV
-                atualizar_coord(est, pv, r["DH_med_m"], r["Hz_med_deg"])
+        # se não conseguir um deles, não desenha triângulo incompleto
+        if not tem_p2 or not tem_p3:
+            st.info(
+                "Para desenhar o triângulo, é preciso ter leituras médias "
+                "P1→P2 e P1→P3 (Hz_médio e DH_médio). Verifique a planilha."
+            )
+        else:
+            # Plot do triângulo P1–P2–P3
+            fig, ax = plt.subplots(figsize=(5, 5))
 
-        # Plot
-        fig, ax = plt.subplots(figsize=(5, 5))
+            x1, y1 = coords["P1"]
+            x2, y2 = coords["P2"]
+            x3, y3 = coords["P3"]
 
-        # Desenha segmentos entre pares P1–P2, P1–P3, P2–P3 se disponíveis
-        pares = [("P1", "P2"), ("P1", "P3"), ("P2", "P3")]
-        for a, b in pares:
-            if a in coords and b in coords:
-                xa, ya = coords[a]
-                xb, yb = coords[b]
-                ax.plot([xa, xb], [ya, yb], "-k", linewidth=1.3, alpha=0.8)
+            # lados do triângulo
+            ax.plot([x1, x2], [y1, y2], "-k", linewidth=1.4)
+            ax.plot([x2, x3], [y2, y3], "-k", linewidth=1.4)
+            ax.plot([x1, x3], [y1, y3], "-k", linewidth=1.4)
 
-        # Desenha os pontos
-        for nome, (x, y) in coords.items():
-            cor = "darkred" if nome == "P1" else "navy"
-            ax.scatter(x, y, color=cor, s=40, zorder=3)
-            ax.text(x, y, f" {nome}", fontsize=10, va="bottom", ha="left")
+            # pontos
+            for nome, (x, y) in coords.items():
+                cor = "darkred" if nome == "P1" else "navy"
+                ax.scatter(x, y, color=cor, s=45, zorder=3)
+                ax.text(x, y, f" {nome}", fontsize=10, va="bottom", ha="left")
 
-        ax.set_aspect("equal", "box")
-        ax.set_xlabel("X local (m)")
-        ax.set_ylabel("Y local (m)")
-        ax.set_title("Croqui plano aproximado do triângulo P1–P2–P3")
-        ax.grid(True, linestyle="--", alpha=0.4)
+            ax.set_aspect("equal", "box")
+            ax.set_xlabel("X local (m)")
+            ax.set_ylabel("Y local (m)")
+            ax.set_title("Triângulo P1–P2–P3 (croqui plano aproximado)")
+            ax.grid(True, linestyle="--", alpha=0.4)
 
-        st.pyplot(fig)
+            st.pyplot(fig)
 
 # -------------------- Rodapé -------------------------
 st.markdown(
