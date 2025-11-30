@@ -577,7 +577,7 @@ if df_uso is not None:
     res["DH_med_m"] = np.abs((res["DH_PD_m"] + res["DH_PI_m"]) / 2.0).round(4)
     res["DN_med_m"] = np.abs((res["DN_PD_m"] + res["DN_PI_m"]) / 2.0).round(4)
 
-    # ------- Agregação por par EST–PV (média de todos os PD/PI) -------
+    # ------- Agregação por par EST–PV -------
     def agg_par(df):
         out = {}
         out["Hz_PD_med_deg"] = mean_direction_list(df["Hz_PD_deg"])
@@ -743,6 +743,11 @@ if df_par is not None and not df_par.empty:
             angulos = {"A": ang_A, "B": ang_B, "C": ang_C}
             return lados, angulos, area
 
+        def resumo_angulos(angA, angB, angC):
+            soma = angA + angB + angC
+            desvio = soma - 180.0
+            return soma, desvio
+
         modo = st.radio(
             "Escolha o modo de construção do triângulo:",
             [
@@ -786,8 +791,18 @@ if df_par is not None and not df_par.empty:
             st.markdown("#### Triângulo médio P1–P2–P3 (todas as leituras)")
             st.markdown("##### Distâncias dos lados")
             st.dataframe(lados_df, use_container_width=True)
+
             st.markdown("##### Ângulos internos (lei dos cossenos)")
             st.dataframe(ang_df, use_container_width=True)
+
+            soma_ang, desvio = resumo_angulos(
+                angulos["A"], angulos["B"], angulos["C"]
+            )
+            st.markdown(
+                f"**Soma dos ângulos internos:** `{soma_ang:.4f}°` &nbsp;&nbsp; "
+                f"(desvio em relação a 180°: `{desvio:+.4f}°`)"
+            )
+
             st.markdown(f"**Área do triângulo (Heron):** `{area:.4f} m²`")
 
         # ---------- MODO 2: específico com anotação de lados/ângulos ----------
@@ -849,18 +864,10 @@ if df_par is not None and not df_par.empty:
                             "Verifique se existem médias para P1⇒P3, P3⇒P2 e P2⇒P1."
                         )
                     else:
-                        # ---- Triângulo abstrato P1–P3–P2 partindo de P1 ----
-                        # lados:
-                        #   P1–P3 = L13
-                        #   P3–P2 = L32
-                        #   P2–P1 = L21
-                        # nomenclatura para lei dos cossenos:
-                        #   a = lado oposto a P1 (P3–P2) = L32
-                        #   b = lado oposto a P3 (P2–P1) = L21
-                        #   c = lado oposto a P2 (P1–P3) = L13
-                        a = L32
-                        b = L21
-                        c = L13
+                        # Triângulo abstrato P1–P3–P2 partindo de P1
+                        a = L32  # lado oposto a P1
+                        b = L21  # lado oposto a P3
+                        c = L13  # lado oposto a P2
 
                         coords_tri = {
                             "P1": (0.0, 0.0),
@@ -886,13 +893,12 @@ if df_par is not None and not df_par.empty:
                         ang_P3 = angulo_oposto(d_P2P1, d_P1P3, d_P3P2)
                         ang_P2 = angulo_oposto(d_P1P3, d_P2P1, d_P3P2)
 
-                        soma_ang = ang_P1 + ang_P2 + ang_P3
-                        desvio = soma_ang - 180.0
+                        soma_ang, desvio = resumo_angulos(ang_P1, ang_P3, ang_P2)
 
                         s_ = (d_P1P3 + d_P3P2 + d_P2P1) / 2.0
                         area_ = math.sqrt(max(0.0, s_ * (s_ - d_P1P3) * (s_ - d_P3P2) * (s_ - d_P2P1)))
 
-                        # ---- Desenho com distâncias e ângulos anotados ----
+                        # Desenho com distâncias e ângulos anotados
                         x1, y1 = coords_tri["P1"]
                         x3, y3 = coords_tri["P3"]
                         x2, y2 = coords_tri["P2"]
@@ -989,7 +995,7 @@ if df_par is not None and not df_par.empty:
 st.markdown(
     """
     <p class="footer-text">
-        Versão do app: <code>6.0 — Médias por par EST–PV + Triângulo anotado (lados, ângulos, desvio)</code>.
+        Versão do app: <code>6.1 — Médias por par EST–PV + Triângulo anotado (lados, ângulos, desvio)</code>.
     </p>
     """,
     unsafe_allow_html=True,
