@@ -606,14 +606,13 @@ if df_uso is not None:
         key="download_saida_csv"
     )
 
-# -------------------- 4. Croqui gráfico (triângulo P1–P2–P3) ------------------------
-# -------------------- 4. Croqui gráfico (triângulo P1–P2–P3 + seleção de 3 pontos) ------------------------
+# ==================== 4. Croqui gráfico e análise do triângulo P1–P2–P3 ====================
 if res is not None:
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>4. Croqui gráfico (triângulo P1–P2–P3)</span>
+            <span>4. Croqui gráfico e análise do triângulo P1–P2–P3</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -621,155 +620,297 @@ if res is not None:
 
     st.markdown(
         """
-        Representação plana dos pontos observados e do triângulo P1–P2–P3.
-        Você também pode escolher <b>quaisquer 3 pontos</b> para calcular
-        as distâncias entre eles, os ângulos em cada vértice e a área do triângulo.
+        A partir das medições entre P1, P2 e P3, o programa monta um triângulo em planta
+        e calcula as distâncias, ângulos internos (pela lei dos cossenos) e a área.
+        Você pode usar:
+        <ul>
+          <li><b>todas</b> as leituras disponíveis (triângulo médio); ou</li>
+          <li>apenas algumas leituras específicas escolhidas por você.</li>
+        </ul>
         """,
         unsafe_allow_html=True,
     )
 
+    # Só usamos linhas que tenham Hz médio e DH médio válidos
     valid = res.dropna(subset=["Hz_med_deg", "DH_med_m"]).copy()
     if valid.empty:
         st.info("Não há dados suficientes (Hz_médio e DH_médio) para gerar o croqui.")
     else:
-        # 4.1 – Coordenadas aproximadas de todos os pontos
-        # P1 na origem
+        # ---------- 4.1 – Construção de coordenadas aproximadas (sistema local) ----------
+        # P1 fixo na origem
         coords = {"P1": (0.0, 0.0)}
 
         def add_coord_from(est, pv, dh, hz_deg):
-            """Adiciona (ou atualiza) coordenadas de pv a partir de est, se est já tem coord."""
+            """Adiciona/atualiza coordenadas de pv a partir de est, se est já tiver coordenada."""
             est_ = str(est).strip().upper()
             pv_  = str(pv).strip().upper()
             if est_ not in coords:
                 return
             x_est, y_est = coords[est_]
-            az = math.radians(hz_deg)
+            az = math.radians(hz_deg)  # 0° no norte, sentido horário
             dx = dh * math.sin(az)
             dy = dh * math.cos(az)
             x_new = x_est + dx
             y_new = y_est + dy
             if pv_ in coords:
-                # média caso já exista
+                # se já existe, faz uma média simples das coordenadas
                 x_old, y_old = coords[pv_]
                 coords[pv_] = ((x_old + x_new) / 2.0, (y_old + y_new) / 2.0)
             else:
                 coords[pv_] = (x_new, y_new)
 
-        # médias por EST–PV
+        # Agrupa por EST–PV (média das leituras daquela combinação)
         grp = valid.groupby(["EST", "PV"], as_index=False).agg({
             "Hz_med_deg": "mean",
             "DH_med_m": "mean"
         })
 
-        # Primeiro, priorizamos visadas a partir de P1
+        # 1º passo: priorizar visadas a partir de P1 para "espalhar" o sistema a partir da origem
         for _, row in grp.iterrows():
             if str(row["EST"]).strip().upper() == "P1":
                 add_coord_from(row["EST"], row["PV"], row["DH_med_m"], row["Hz_med_deg"])
 
-        # Depois, usamos as demais estações para enriquecer coords
-        for _ in range(2):  # duas iterações para propagar
+        # 2º passo: usar as demais estações algumas vezes para propagar coordenadas
+        for _ in range(3):
             for _, row in grp.iterrows():
                 add_coord_from(row["EST"], row["PV"], row["DH_med_m"], row["Hz_med_deg"])
 
-        # Se não tiver P2 ou P3, não há triângulo P1–P2–P3
-        if "P2" not in coords or "P3" not in coords:
+        # Precisamos pelo menos de P1, P2, P3
+        pontos_basicos = {"P1", "P2", "P3"}
+        if not pontos_basicos.issubset(set(coords.keys())):
             st.info(
-                "Para desenhar o triângulo P1–P2–P3, é preciso ter leituras médias "
-                "P1→P2 e P1→P3 (Hz_médio e DH_médio) na planilha."
+                "Para montar o triângulo P1–P2–P3 é necessário ter leituras médias "
+                "envolvendo esses três pontos (P1⇄P2, P1⇄P3, P2⇄P3). "
+                "Verifique se todas as visadas foram inseridas."
             )
         else:
-            # 4.2 – Seleção de 3 pontos pelo usuário
-            todos_pontos = sorted(coords.keys())
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                p_a = st.selectbox("Ponto A", todos_pontos, index=todos_pontos.index("P1") if "P1" in todos_pontos else 0)
-            with col_b:
-                p_b = st.selectbox("Ponto B", todos_pontos, index=todos_pontos.index("P2") if "P2" in todos_pontos else 0)
-            with col_c:
-                p_c = st.selectbox("Ponto C", todos_pontos, index=todos_pontos.index("P3") if "P3" in todos_pontos else 0)
+            # ---------- 4.2 – Funções auxiliares para lado, ângulo e área ----------
+            def dist(p, q):
+                x1, y1 = coords[p]
+                x2, y2 = coords[q]
+                return math.hypot(x2 - x1, y2 - y1)
 
-            if len({p_a, p_b, p_c}) < 3:
-                st.warning("Selecione três pontos diferentes para formar um triângulo.")
-            else:
-                # 4.3 – Cálculo de lados, ângulos e área
-                def dist(P, Q):
-                    x1, y1 = coords[P]
-                    x2, y2 = coords[Q]
-                    return math.hypot(x2 - x1, y2 - y1)
+            def angulo_oposto(lado_oposto, lado1, lado2):
+                """Ângulo oposto a 'lado_oposto' pela lei dos cossenos (em graus)."""
+                num = lado1**2 + lado2**2 - lado_oposto**2
+                den = 2 * lado1 * lado2
+                if den == 0:
+                    return np.nan
+                cos_val = max(-1.0, min(1.0, num / den))
+                return math.degrees(math.acos(cos_val))
 
-                # lados opostos aos vértices A, B, C
-                a = dist(p_b, p_c)  # lado a oposto a A
-                b = dist(p_a, p_c)  # lado b oposto a B
-                c = dist(p_a, p_b)  # lado c oposto a C
+            def info_triangulo(pA, pB, pC):
+                """Retorna lados, ângulos interiores e área do triângulo pA–pB–pC."""
+                # Lados opostos aos vértices A, B, C
+                a = dist(pB, pC)  # lado a oposto a A
+                b = dist(pA, pC)  # lado b oposto a B
+                c = dist(pA, pB)  # lado c oposto a C
 
-                def angulo_oposto(lado_oposto, lado1, lado2):
-                    # lei dos cossenos
-                    num = lado1**2 + lado2**2 - lado_oposto**2
-                    den = 2 * lado1 * lado2
-                    if den == 0:
-                        return np.nan
-                    cos_val = max(-1.0, min(1.0, num / den))
-                    return math.degrees(math.acos(cos_val))
-
-                ang_A = angulo_oposto(a, b, c)
+                ang_A = angulo_opposto = angulo_oposto(a, b, c)
                 ang_B = angulo_oposto(b, a, c)
                 ang_C = angulo_oposto(c, a, b)
 
                 s = (a + b + c) / 2.0
                 area = math.sqrt(max(0.0, s * (s - a) * (s - b) * (s - c)))
 
-                # 4.4 – Desenho do triângulo selecionado, destacando P1–P2–P3
-                fig, ax = plt.subplots(figsize=(5, 5))
+                lados = {
+                    "A": a, "B": b, "C": c,
+                    "nome_lado_A": f"{pB}{pC}",
+                    "nome_lado_B": f"{pA}{pC}",
+                    "nome_lado_C": f"{pA}{pB}",
+                }
+                angulos = {"A": ang_A, "B": ang_B, "C": ang_C}
+                return lados, angulos, area
 
-                # Triângulo padrão P1–P2–P3 (se todos existem)
-                x1, y1 = coords["P1"]
-                x2, y2 = coords["P2"]
-                x3, y3 = coords["P3"]
-                ax.plot([x1, x2], [y1, y2], "--", color="grey", linewidth=1.0, alpha=0.7)
-                ax.plot([x2, x3], [y2, y3], "--", color="grey", linewidth=1.0, alpha=0.7)
-                ax.plot([x1, x3], [y1, y3], "--", color="grey", linewidth=1.0, alpha=0.7)
+            # ---------- 4.3 – Escolha do modo: médio x leituras específicas ----------
+            modo = st.radio(
+                "Escolha o modo de construção do triângulo:",
+                [
+                    "Triângulo médio P1–P2–P3 (todas as leituras)",
+                    "Triângulo a partir de leituras específicas (por par EST–PV)",
+                ],
+                index=0,
+            )
 
-                # Triângulo escolhido pelo usuário
-                xa, ya = coords[p_a]
-                xb, yb = coords[p_b]
-                xc, yc = coords[p_c]
-                ax.plot([xa, xb], [ya, yb], "-k", linewidth=1.6)
-                ax.plot([xb, xc], [yb, yc], "-k", linewidth=1.6)
-                ax.plot([xa, xc], [ya, yc], "-k", linewidth=1.6)
+            # Desenho base: todos os pontos calculados
+            fig, ax = plt.subplots(figsize=(5, 5))
+            for nome, (x, y) in coords.items():
+                cor = "darkred" if nome == "P1" else "navy"
+                ax.scatter(x, y, color=cor, s=40, zorder=3)
+                ax.text(x, y, f" {nome}", fontsize=9, va="bottom", ha="left")
 
-                # Pontos
-                for nome, (x, y) in coords.items():
-                    cor = "darkred" if nome == "P1" else "navy"
-                    tam = 55 if nome in {p_a, p_b, p_c} else 35
-                    ax.scatter(x, y, color=cor, s=tam, zorder=3)
-                    ax.text(x, y, f" {nome}", fontsize=10, va="bottom", ha="left")
+            # ========== MODO 1 – Triângulo médio (todas as leituras) ==========
+            if modo.startswith("Triângulo médio"):
+                pA, pB, pC = "P1", "P2", "P3"
+                lados, angulos, area = info_triangulo(pA, pB, pC)
 
-                ax.set_aspect("equal", "box")
-                ax.set_xlabel("X local (m)")
-                ax.set_ylabel("Y local (m)")
-                ax.set_title(f"Triângulo {p_a}–{p_b}–{p_c} (croqui plano aproximado)")
-                ax.grid(True, linestyle="--", alpha=0.4)
+                # Desenhar triângulo em preto
+                xA, yA = coords[pA]
+                xB, yB = coords[pB]
+                xC, yC = coords[pC]
+                ax.plot([xA, xB], [yA, yB], "-k", linewidth=1.8, label="Triângulo médio")
+                ax.plot([xB, xC], [yB, yC], "-k", linewidth=1.8)
+                ax.plot([xA, xC], [yA, yC], "-k", linewidth=1.8)
 
-                st.pyplot(fig)
+                st.markdown("#### Triângulo médio P1–P2–P3 (todas as leituras)")
 
-                # 4.5 – Tabela resumo numérica
-                dados_tri = pd.DataFrame({
-                    "Lado": [f"{p_b}{p_c}", f"{p_a}{p_c}", f"{p_a}{p_b}"],
-                    "Distância (m)": [round(a, 4), round(b, 4), round(c, 4)]
-                })
+            # ========== MODO 2 – Triângulo de leituras específicas ==========
+            else:
+                st.markdown(
+                    """
+                    Selecione quais leituras (EST–PV) deseja usar para cada lado do triângulo.
+                    O programa calcula as distâncias médias de cada lado e monta o triângulo
+                    correspondente, permitindo comparar com o triângulo médio.
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-                angulos_df = pd.DataFrame({
-                    "Vértice": [p_a, p_b, p_c],
-                    "Ângulo (graus)": [round(ang_A, 4), round(ang_B, 4), round(ang_C, 4)]
-                })
+                # Filtra apenas combinações envolvendo P1, P2, P3
+                mask_3pts = valid["EST"].isin(["P1", "P2", "P3"]) & valid["PV"].isin(["P1", "P2", "P3"])
+                df_3pts = valid[mask_3pts].copy()
 
-                st.markdown("#### Distâncias dos lados do triângulo selecionado")
-                st.dataframe(dados_tri, use_container_width=True)
+                # Cria texto identificador de cada linha (ex.: "P1 ⇒ P2 (linha 3)")
+                df_3pts["id_linha"] = df_3pts.apply(
+                    lambda r: f"{r['EST']} ⇒ {r['PV']} (linha {r.name + 2})", axis=1
+                )
 
-                st.markdown("#### Ângulos internos do triângulo selecionado")
-                st.dataframe(angulos_df, use_container_width=True)
+                # Lado P1–P2
+                opcoes_12 = df_3pts[
+                    ((df_3pts["EST"] == "P1") & (df_3pts["PV"] == "P2")) |
+                    ((df_3pts["EST"] == "P2") & (df_3pts["PV"] == "P1"))
+                ]
+                # Lado P2–P3
+                opcoes_23 = df_3pts[
+                    ((df_3pts["EST"] == "P2") & (df_3pts["PV"] == "P3")) |
+                    ((df_3pts["EST"] == "P3") & (df_3pts["PV"] == "P2"))
+                ]
+                # Lado P3–P1
+                opcoes_31 = df_3pts[
+                    ((df_3pts["EST"] == "P3") & (df_3pts["PV"] == "P1")) |
+                    ((df_3pts["EST"] == "P1") & (df_3pts["PV"] == "P3"))
+                ]
 
-                st.markdown(f"**Área do triângulo {p_a}–{p_b}–{p_c}:** `{area:.4f} m²`")
+                col12, col23, col31 = st.columns(3)
+                with col12:
+                    sel_12 = st.multiselect(
+                        "Leituras para lado P1–P2",
+                        options=opcoes_12["id_linha"].tolist(),
+                        default=opcoes_12["id_linha"].tolist(),
+                    )
+                with col23:
+                    sel_23 = st.multiselect(
+                        "Leituras para lado P2–P3",
+                        options=opcoes_23["id_linha"].tolist(),
+                        default=opcoes_23["id_linha"].tolist(),
+                    )
+                with col31:
+                    sel_31 = st.multiselect(
+                        "Leituras para lado P3–P1",
+                        options=opcoes_31["id_linha"].tolist(),
+                        default=opcoes_31["id_linha"].tolist(),
+                    )
+
+                # Função para média de DH de um conjunto de linhas selecionadas
+                def media_dh_por_lista(df_opcoes, lista_ids):
+                    if not lista_ids:
+                        return np.nan
+                    sub = df_opcoes[df_opcoes["id_linha"].isin(lista_ids)]
+                    if sub.empty:
+                        return np.nan
+                    return float(sub["DH_med_m"].mean())
+
+                L12 = media_dh_por_lista(opcoes_12, sel_12)
+                L23 = media_dh_por_lista(opcoes_23, sel_23)
+                L31 = media_dh_por_lista(opcoes_31, sel_31)
+
+                if any(pd.isna(v) or v == 0 for v in [L12, L23, L31]):
+                    st.warning(
+                        "Selecione pelo menos uma leitura válida para cada lado "
+                        "(P1–P2, P2–P3 e P3–P1) para montar o triângulo."
+                    )
+                else:
+                    # Vamos montar um triângulo abstrato apenas com as distâncias L12, L23, L31.
+                    # Para desenhar, colocamos P1 em (0,0), P2 em (L12,0) e calculamos P3 em (x3,y3)
+                    # usando geometria plana (lei dos cossenos ao contrário).
+
+                    # Lados no padrão de nomenclatura de info_triangulo(P1,P2,P3):
+                    # a = lado oposto a P1 = P2–P3 = L23
+                    # b = lado oposto a P2 = P1–P3 = L31
+                    # c = lado oposto a P3 = P1–P2 = L12
+                    a, b, c = L23, L31, L12
+
+                    # Coordenadas de P1 e P2 nesse triângulo "abstrato"
+                    coords_espec = {}
+                    coords_espec["P1"] = (0.0, 0.0)
+                    coords_espec["P2"] = (c, 0.0)
+
+                    # Coordenada de P3 a partir dos lados (c, a, b)
+                    # c^2 = x3^2 + y3^2   (dist P1–P3 = b)
+                    # a^2 = (x3 - c)^2 + y3^2
+                    # Mas é mais simples usar lei dos cossenos para o ângulo em P1
+                    cos_A = max(-1.0, min(1.0, (b**2 + c**2 - a**2) / (2 * b * c)))
+                    ang_A = math.acos(cos_A)  # em rad
+                    x3 = b * math.cos(ang_A)
+                    y3 = b * math.sin(ang_A)
+                    coords_espec["P3"] = (x3, y3)
+
+                    # Substituímos coords pelos coords_espec para o cálculo do triângulo escolhido
+                    coords_backup = coords  # guardamos se quiser usar depois
+                    coords_calc = coords_espec
+
+                    def dist_espec(p, q):
+                        x1, y1 = coords_calc[p]
+                        x2, y2 = coords_calc[q]
+                        return math.hypot(x2 - x1, y2 - y1)
+
+                    def info_triangulo_espec():
+                        a_ = dist_espec("P2", "P3")
+                        b_ = dist_espec("P1", "P3")
+                        c_ = dist_espec("P1", "P2")
+                        ang_A_ = angulo_oposto(a_, b_, c_)
+                        ang_B_ = angulo_oposto(b_, a_, c_)
+                        ang_C_ = angulo_oposto(c_, a_, b_)
+                        s_ = (a_ + b_ + c_) / 2.0
+                        area_ = math.sqrt(max(0.0, s_ * (s_ - a_) * (s_ - b_) * (s_ - c_)))
+                        return (a_, b_, c_), (ang_A_, ang_B_, ang_C_), area_
+
+                    (a_, b_, c_), (angA_, angB_, angC_), area_ = info_triangulo_espec()
+
+                    # Desenho do triângulo específico em VERMELHO sobre o croqui atual
+                    x1e, y1e = coords_espec["P1"]
+                    x2e, y2e = coords_espec["P2"]
+                    x3e, y3e = coords_espec["P3"]
+                    ax.plot(
+                        [x1e, x2e], [y1e, y2e],
+                        "-", color="crimson", linewidth=1.8, label="Triângulo escolhido"
+                    )
+                    ax.plot([x2e, x3e], [y2e, y3e], "-", color="crimson", linewidth=1.8)
+                    ax.plot([x1e, x3e], [y1e, y3e], "-", color="crimson", linewidth=1.8)
+
+                    st.markdown("#### Triângulo construído a partir das leituras específicas selecionadas")
+
+                    # Tabelas de lados e ângulos (usando L12,L23,L31 diretamente)
+                    lados_df = pd.DataFrame({
+                        "Lado": ["P1–P2", "P2–P3", "P3–P1"],
+                        "Distância média (m)": [round(L12, 4), round(L23, 4), round(L31, 4)],
+                    })
+                    ang_df = pd.DataFrame({
+                        "Vértice": ["P1", "P2", "P3"],
+                        "Ângulo interno (graus)": [round(angA_, 4), round(angB_, 4), round(angC_, 4)],
+                    })
+                    st.markdown("##### Distâncias dos lados")
+                    st.dataframe(lados_df, use_container_width=True)
+                    st.markdown("##### Ângulos internos (lei dos cossenos)")
+                    st.dataframe(ang_df, use_container_width=True)
+                    st.markdown(f"**Área do triângulo (Heron):** `{area_:.4f} m²`")
+
+            # ---------- Finalização do croqui ----------
+            ax.set_aspect("equal", "box")
+            ax.set_xlabel("X local (m)")
+            ax.set_ylabel("Y local (m)")
+            ax.grid(True, linestyle="--", alpha=0.4)
+            ax.legend(loc="best")
+            st.pyplot(fig)
 
 # -------------------- Rodapé -------------------------
 st.markdown(
