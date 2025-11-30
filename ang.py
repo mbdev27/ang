@@ -1,5 +1,6 @@
 # app.py
-# Versão: UFPE_v3.2 — ordem dos vértices baseada nas distâncias médias (maior, intermediária, menor)
+# UFPE - Calculadora de Ângulos e Distâncias
+# Versão: Triângulo por série usando apenas DH da série + Teorema dos Cossenos
 
 import io
 import math
@@ -10,33 +11,40 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 
+# ==================== Config página ====================
 st.set_page_config(
     page_title="Calculadora de Ângulos e Distâncias | UFPE",
     layout="wide",
     page_icon="📐",
 )
 
+# ==================== Parâmetros globais ====================
+
 REQUIRED_COLS = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 
+# Mapa clássico P1–P3 para Ré/Vante
 RE_VANTE_MAP: Dict[str, Tuple[str, str]] = {
     "P1": ("P2", "P3"),
     "P2": ("P1", "P3"),
     "P3": ("P1", "P2"),
 }
 
-# ========= Ângulos / helpers =========
+# ==================== Funções auxiliares de ângulo ====================
 
 def parse_angle_to_decimal(value: str) -> float:
+    """Converte ângulos em string (DMS ou decimal) para graus decimais."""
     if value is None:
         return float("nan")
     s = str(value).strip()
     if s == "":
         return float("nan")
+    # caso já seja decimal
     try:
         if all(ch.isdigit() or ch in ".,-+" for ch in s):
             return float(s.replace(",", "."))
     except Exception:
         pass
+    # limpar símbolos
     for ch in ["°", "º", "'", "’", "´", "′", '"', "″"]:
         s = s.replace(ch, " ")
     s = s.replace(",", ".")
@@ -57,6 +65,7 @@ def parse_angle_to_decimal(value: str) -> float:
 
 
 def decimal_to_dms(angle_deg: float) -> str:
+    """Converte graus decimais para string DMS."""
     if angle_deg is None or math.isnan(angle_deg):
         return ""
     sign = "-" if angle_deg < 0 else ""
@@ -76,6 +85,7 @@ def decimal_to_dms(angle_deg: float) -> str:
 
 
 def mean_direction_two(a_deg: float, b_deg: float) -> float:
+    """Média vetorial de duas direções (graus)."""
     if math.isnan(a_deg) or math.isnan(b_deg):
         return float("nan")
     a_rad = math.radians(a_deg)
@@ -91,6 +101,7 @@ def mean_direction_two(a_deg: float, b_deg: float) -> float:
 
 
 def mean_direction_list(angles_deg: pd.Series) -> float:
+    """Média vetorial de uma lista de direções (graus)."""
     vals = [a for a in angles_deg if not math.isnan(a)]
     if len(vals) == 0:
         return float("nan")
@@ -104,9 +115,10 @@ def mean_direction_list(angles_deg: pd.Series) -> float:
     return ang
 
 
-# ========= Normalização / validação =========
+# ==================== Normalização / Validação ====================
 
 def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
+    """Padroniza nomes de colunas para EST, PV, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI."""
     df = df_original.copy()
     colmap = {}
     for c in df.columns:
@@ -133,6 +145,7 @@ def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
 
 
 def validar_dataframe(df_original: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    """Valida presença de colunas e valores numéricos/angulares básicos."""
     erros: List[str] = []
     df = normalizar_colunas(df_original)
 
@@ -187,9 +200,10 @@ def validar_dataframe(df_original: pd.DataFrame) -> Tuple[pd.DataFrame, List[str
     return df, erros
 
 
-# ========= Cálculos linha a linha / por par =========
+# ==================== Cálculos linha a linha / por par ====================
 
 def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
+    """Calcula Hz, Z, DH, DN e médias (PD/PI) linha a linha."""
     res = df_uso.copy()
     for col in ["Hz_PD", "Hz_PI", "Z_PD", "Z_PI"]:
         res[col + "_deg"] = res[col].apply(parse_angle_to_decimal)
@@ -217,6 +231,7 @@ def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
 
 
 def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
+    """Agrega as séries por par EST–PV, gerando médias por par."""
     def agg_par(df_group: pd.DataFrame) -> pd.Series:
         out = {}
         out["Hz_PD_med_deg"] = mean_direction_list(df_group["Hz_PD_deg"])
@@ -238,9 +253,10 @@ def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
     return df_par
 
 
-# ========= Tabela Hz / Z =========
+# ==================== Tabela Hz e Z ====================
 
 def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Tabela de médias Hz por par e tabela Hz Ré/Vante por estação."""
     hz_pd_med_dms = df_par["Hz_PD_med_deg"].apply(decimal_to_dms)
     hz_pi_med_dms = df_par["Hz_PI_med_deg"].apply(decimal_to_dms)
     hz_med_dms = df_par["Hz_med_deg_par"].apply(decimal_to_dms)
@@ -286,6 +302,7 @@ def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> Tuple[pd.DataFrame
 
 
 def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
+    """Tabela de medição angular vertical/zenital média."""
     z_pd_med = df_par["Z_PD_med_deg"]
     z_pi_med = df_par["Z_PI_med_deg"]
     z_corr_deg = (z_pd_med - z_pi_med) / 2.0 + 180.0
@@ -305,17 +322,16 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
     return tab
 
 
-# ========= Distâncias médias simétricas e ordem por distância =========
+# ==================== Distâncias médias simétricas (para diagnóstico) ====================
 
 def tabela_distancias_medias_simetricas(df_par: pd.DataFrame) -> pd.DataFrame:
     """
     A partir de df_par (com DH_med_m_par por EST,PV),
     monta uma tabela de distâncias médias simétricas por par de pontos:
-    chave = {A,B} (independe da ordem), valor = média das DH de A->B e B->A (se existirem).
+    chave = {A,B}, valor = média das DH de A->B e B->A (se existirem).
     """
-    # tabela auxiliar com DH
     aux = df_par[["EST", "PV", "DH_med_m_par"]].copy()
-    registros = {}
+    registros: Dict[Tuple[str, str], List[float]] = {}
 
     for _, row in aux.iterrows():
         a = str(row["EST"])
@@ -335,51 +351,14 @@ def tabela_distancias_medias_simetricas(df_par: pd.DataFrame) -> pd.DataFrame:
 
     df_dist = pd.DataFrame(linhas)
     if not df_dist.empty:
-        df_dist.sort_values("DH_media", ascending=False, inplace=True)  # maior → menor
+        df_dist.sort_values("DH_media", ascending=False, inplace=True)
     return df_dist
 
 
-def detectar_ordem_estacoes_por_distancia(df_par: pd.DataFrame) -> List[str]:
-    """
-    Para o caso de 3 pontos:
-    - calcula as distâncias DH médias simétricas
-    - ordena da maior para a menor
-    - retorna uma ordem coerente de vértices [E1,E2,E3],
-      de forma que:
-      - lado maior seja E1–E3 (caso tipo P1–P3),
-      - intermediário envolva E1 (tipo P1–P2),
-      - menor feche triângulo (tipo P2–P3).
-    Em geral, encontra uma sequência dos 3 pontos que usa todos os lados.
-    """
-    df_dist = tabela_distancias_medias_simetricas(df_par)
-    if df_dist.empty or len(df_dist) < 3:
-        # fallback: ordem lexicográfica pelos nomes encontrados
-        pontos = sorted(set(df_par["EST"]).union(set(df_par["PV"])))
-        return pontos[:3]
-
-    # pontos distintos
-    pontos = set(df_dist["PontoA"]).union(set(df_dist["PontoB"]))
-    if len(pontos) != 3:
-        # se tiver mais ou menos de 3, mantém fallback simples
-        return sorted(pontos)[:3]
-
-    # pegar os 3 pares (maior, intermediário, menor)
-    pares = list(df_dist[["PontoA", "PontoB"]].itertuples(index=False, name=None))
-    # maior distância
-    pA_maior, pB_maior = pares[0]
-    # o terceiro vértice é o ponto que não está no par de maior DH
-    terceiro = list(pontos - {pA_maior, pB_maior})[0]
-
-    # agora temos 3 pontos: pA_maior, pB_maior, terceiro
-    # vamos definir ordem: [pA_maior, terceiro, pB_maior]
-    # isso é análogo a: P1, P3, P2 (maior lado = P1–P3)
-    ordem = [pA_maior, terceiro, pB_maior]
-    return ordem
-
-
-# ========= Coordenadas com azimute de referência =========
+# ==================== Azimute de referência / coordenadas médias (opcional) ====================
 
 def delta_from_azimuth(az_deg: float, dh: float) -> Tuple[float, float]:
+    """Retorna (ΔE, ΔN) a partir de azimute e distância horizontal."""
     az_rad = math.radians(az_deg)
     de = dh * math.sin(az_rad)
     dn = dh * math.cos(az_rad)
@@ -387,6 +366,7 @@ def delta_from_azimuth(az_deg: float, dh: float) -> Tuple[float, float]:
 
 
 def calcular_azimutes_corrigidos(df_par: pd.DataFrame, az_ref: float, est_inicio: str, est_segundo: str) -> pd.DataFrame:
+    """Aplica azimute de referência ao par est_inicio→est_segundo e corrige todos os azimutes médios."""
     df_par = df_par.copy()
     mask_ref = (df_par["EST"] == est_inicio) & (df_par["PV"] == est_segundo)
     if not mask_ref.any():
@@ -401,6 +381,7 @@ def calcular_azimutes_corrigidos(df_par: pd.DataFrame, az_ref: float, est_inicio
 
 
 def calcular_coordenadas(df_par_az: pd.DataFrame, est_inicio: str) -> Tuple[pd.DataFrame, Dict[str, Tuple[float, float]]]:
+    """Calcula coordenadas aproximadas (E,N) a partir de azimutes e DH médios por par."""
     coords: Dict[str, Tuple[float, float]] = {}
     coords[est_inicio] = (0.0, 0.0)
 
@@ -442,7 +423,158 @@ def calcular_coordenadas(df_par_az: pd.DataFrame, est_inicio: str) -> Tuple[pd.D
     return pd.DataFrame(rows), coords
 
 
+# ==================== Triângulo por série (apenas DH + cossenos) ====================
+
+def detectar_tres_pontos(df_par: pd.DataFrame) -> List[str]:
+    """
+    Retorna a lista de pontos distintos (EST e PV).
+    Se houver exatamente 3, trataremos como triângulo.
+    """
+    pontos = set(df_par["EST"]).union(set(df_par["PV"]))
+    return sorted(pontos)
+
+
+def numerar_series_por_estacao(res_linha: pd.DataFrame) -> pd.DataFrame:
+    """Adiciona coluna SERIE = índice da série por estação."""
+    df = res_linha.copy()
+    df["SERIE"] = df.groupby("EST").cumcount().astype(int) + 1
+    return df
+
+
+def obter_dh_triangulo_por_serie(res_serie: pd.DataFrame, pontos: List[str]):
+    """
+    pontos: [A, B, C] (rótulos, ex.: ["P1","P2","P3"])
+    res_serie: dataframe linha a linha, com EST, PV, SERIE, DH_med_m.
+
+    Retorna:
+        { serie: { 'AB': dh_AB, 'BC': dh_BC, 'AC': dh_AC } }
+    usando DH_med_m da série (não a média final por par).
+    """
+    if len(pontos) != 3:
+        return {}
+
+    A, B, C = pontos
+    resultados: Dict[int, Dict[str, float]] = {}
+
+    # número de séries por estação (pegamos o mínimo)
+    n_series = int(res_serie.groupby("EST")["SERIE"].max().min())
+
+    for s in range(1, n_series + 1):
+        def dh_serie(est, pv):
+            linha = res_serie[
+                (res_serie["EST"] == est)
+                & (res_serie["PV"] == pv)
+                & (res_serie["SERIE"] == s)
+            ]
+            if linha.empty:
+                return None
+            return float(linha["DH_med_m"].iloc[0])
+
+        # aqui assumimos leituras A->B, B->C, A->C na planilha
+        dh_AB = dh_serie(A, B)
+        dh_BC = dh_serie(B, C)
+        dh_AC = dh_serie(A, C)
+
+        if dh_AB is None or dh_BC is None or dh_AC is None:
+            continue
+
+        resultados[s] = {"AB": dh_AB, "BC": dh_BC, "AC": dh_AC}
+
+    return resultados
+
+
+def montar_triangulo_dh(DH_AB: float, DH_BC: float, DH_AC: float):
+    """
+    Recebe as três distâncias (DH) do triângulo: AB, BC, AC.
+    Monta coordenadas artificiais (x,y) para A,B,C usando:
+        - teorema dos cossenos,
+        - base no lado AC.
+    Retorna:
+        coords: {"A":(xA,yA), "B":(xB,yB), "C":(xC,yC)}
+        angulos: {"A":α_A_deg, "B":α_B_deg, "C":α_C_deg}
+        area: área (m²)
+    """
+    L_AB = DH_AB
+    L_BC = DH_BC
+    L_AC = DH_AC
+
+    # 1) Define A e C na base do eixo X
+    A = (0.0, 0.0)
+    C = (L_AC, 0.0)
+
+    # 2) Ângulo em A, oposto a BC (lado a = BC), pelo teorema dos cossenos
+    a = L_BC
+    b = L_AC
+    c = L_AB
+    cos_A = (b*b + c*c - a*a) / (2.0 * b * c)
+    cos_A = max(min(cos_A, 1.0), -1.0)  # evitar erro numérico
+    ang_A_rad = math.acos(cos_A)
+    ang_A = math.degrees(ang_A_rad)
+
+    # 3) Coordenadas de B a partir de A
+    Bx = L_AB * math.cos(ang_A_rad)
+    By = L_AB * math.sin(ang_A_rad)
+    B = (Bx, By)
+
+    # 4) Ângulo em B, oposto a AC
+    cos_B = (L_AB*L_AB + L_BC*L_BC - L_AC*L_AC) / (2.0 * L_AB * L_BC)
+    cos_B = max(min(cos_B, 1.0), -1.0)
+    ang_B = math.degrees(math.acos(cos_B))
+
+    # 5) Ângulo em C pela soma dos ângulos internos
+    ang_C = 180.0 - ang_A - ang_B
+
+    # 6) Área (1/2 * b * c * sen(A))
+    area = 0.5 * L_AB * L_AC * math.sin(ang_A_rad)
+
+    coords = {"A": A, "B": B, "C": C}
+    angulos = {"A": ang_A, "B": ang_B, "C": ang_C}
+    return coords, angulos, area
+
+
+def figuras_triangulo_por_serie(res: pd.DataFrame, df_par: pd.DataFrame):
+    """
+    Usa:
+      - res: linha a linha, com DH_med_m (por série) e EST, PV
+      - df_par: médias por par (para detectar os 3 pontos)
+    Se há exatamente 3 pontos, monta triângulo por série apenas com DH + cossenos.
+    Retorna:
+      pontos: [A,B,C] (nomes reais, ex.: ["P1","P2","P3"])
+      figuras: { serie: {"coords":..., "angulos":..., "area":..., "DH":...} }
+    """
+    pontos = detectar_tres_pontos(df_par)
+    if len(pontos) != 3:
+        return None, {}
+
+    A, B, C = pontos  # apenas ordenação alfabética
+
+    res_serie = numerar_series_por_estacao(res)
+    dh_por_serie = obter_dh_triangulo_por_serie(res_serie, [A, B, C])
+
+    if not dh_por_serie:
+        return pontos, {}
+
+    figuras: Dict[int, Dict] = {}
+    for s, dhs in dh_por_serie.items():
+        DH_AB = dhs["AB"]
+        DH_BC = dhs["BC"]
+        DH_AC = dhs["AC"]
+
+        coords, angulos, area = montar_triangulo_dh(DH_AB, DH_BC, DH_AC)
+        figuras[s] = {
+            "coords": coords,
+            "angulos": angulos,
+            "area": area,
+            "DH": dhs,
+        }
+
+    return [A, B, C], figuras
+
+
+# ==================== Desenho do triângulo médio (a partir de coordenadas médias) ====================
+
 def angulo_interno(p_a, p_b, p_c) -> float:
+    """Ângulo interno em B, formado pelos segmentos BA e BC."""
     ax, ay = p_a
     bx, by = p_b
     cx, cy = p_c
@@ -457,122 +589,8 @@ def angulo_interno(p_a, p_b, p_c) -> float:
     return math.degrees(math.acos(cos_ang))
 
 
-# ========= Séries / figuras por série (usando DH da série) =========
-
-def numerar_series_por_estacao(res_linha: pd.DataFrame) -> pd.DataFrame:
-    df = res_linha.copy()
-    df["SERIE"] = df.groupby("EST").cumcount().astype(int) + 1
-    return df
-
-
-def figuras_por_serie_triangulo_por_distancia(
-    res_linha_serie: pd.DataFrame,
-    az_ref: float,
-    ordem_estacoes: List[str],
-):
-    """
-    Triângulo por série, ordem dos vértices veio de detectar_ordem_estacoes_por_distancia().
-    ordem_estacoes = [E1, E2, E3], onde
-        - maior DH é E1–E3
-        - intermediária E1–E2
-        - menor E2–E3 (na analogia P1–P3, P1–P2, P2–P3).
-    Para cada série s:
-        E1->E2, E2->E3, E3->E1
-    Usa Hz_med_deg da série + offset (az_ref - Hz(E1->E2 série 1)) e DH_med_m da série.
-    """
-    if len(ordem_estacoes) != 3:
-        return {}
-
-    E1, E2, E3 = ordem_estacoes
-    resultados = {}
-
-    # direção de referência E1->E2 (primeira ocorrência de qualquer série)
-    linha_ref = res_linha_serie[(res_linha_serie["EST"] == E1) & (res_linha_serie["PV"] == E2)].head(1)
-    if linha_ref.empty:
-        return resultados
-    hz_ref = linha_ref["Hz_med_deg"].iloc[0]
-    offset = az_ref - hz_ref
-
-    def linha_para_az_e_dh(linha):
-        hz = linha["Hz_med_deg"].iloc[0]
-        dh = linha["DH_med_m"].iloc[0]
-        az = (hz + offset) % 360.0
-        return az, dh
-
-    n_series = int(res_linha_serie.groupby("EST")["SERIE"].max().min())
-
-    for s in range(1, n_series + 1):
-        lE1 = res_linha_serie[(res_linha_serie["EST"] == E1) & (res_linha_serie["SERIE"] == s)]
-        lE2 = res_linha_serie[(res_linha_serie["EST"] == E2) & (res_linha_serie["SERIE"] == s)]
-        lE3 = res_linha_serie[(res_linha_serie["EST"] == E3) & (res_linha_serie["SERIE"] == s)]
-        if lE1.empty or lE2.empty or lE3.empty:
-            continue
-
-        l_E1 = lE1.iloc[[0]]
-        l_E2 = lE2.iloc[[0]]
-        l_E3 = lE3.iloc[[0]]
-
-        az_E1_E2, dh_E1_E2 = linha_para_az_e_dh(l_E1)
-        az_E2_E3, dh_E2_E3 = linha_para_az_e_dh(l_E2)
-        az_E3_E1, dh_E3_E1 = linha_para_az_e_dh(l_E3)
-
-        P1 = (0.0, 0.0)
-        de12, dn12 = delta_from_azimuth(az_E1_E2, dh_E1_E2)
-        P2 = (P1[0] + de12, P1[1] + dn12)
-        de23, dn23 = delta_from_azimuth(az_E2_E3, dh_E2_E3)
-        P3 = (P2[0] + de23, P2[1] + dn23)
-
-        coords = {E1: P1, E2: P2, E3: P3}
-
-        d12 = math.hypot(P2[0] - P1[0], P2[1] - P1[1])
-        d23 = math.hypot(P3[0] - P2[0], P3[1] - P2[1])
-        d31 = math.hypot(P1[0] - P3[0], P1[1] - P3[1])
-
-        df_lados = pd.DataFrame(
-            {
-                "Lado": [f"{E1}–{E2}", f"{E2}–{E3}", f"{E3}–{E1}"],
-                "Distância geométrica (m)": [round(d12, 3), round(d23, 3), round(d31, 3)],
-                "DH da série (m)": [
-                    round(dh_E1_E2, 3),
-                    round(dh_E2_E3, 3),
-                    round(dh_E3_E1, 3),
-                ],
-            }
-        )
-
-        ang_1 = angulo_interno(P3, P1, P2)
-        ang_2 = angulo_interno(P1, P2, P3)
-        ang_3 = angulo_interno(P2, P3, P1)
-
-        df_ang = pd.DataFrame(
-            {
-                "Vértice": [E1, E2, E3],
-                "Ângulo interno (°)": [round(ang_1, 4), round(ang_2, 4), round(ang_3, 4)],
-            }
-        )
-
-        x1, y1 = P1
-        x2, y2 = P2
-        x3, y3 = P3
-        area = abs(
-            x1 * (y2 - y3)
-            + x2 * (y3 - y1)
-            + x3 * (y1 - y2)
-        ) / 2.0
-
-        resultados[s] = {
-            "coords": coords,
-            "df_lados": df_lados,
-            "df_ang": df_ang,
-            "area": area,
-        }
-
-    return resultados
-
-
-# ========= Desenho polígono médio (triângulo livre) =========
-
 def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
+    """Triângulo escolhido pelo usuário com base nas coordenadas médias (opcional)."""
     if len(coords) < 3:
         st.info("Coordenadas insuficientes para formar um triângulo.")
         return
@@ -636,7 +654,7 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     st.pyplot(fig)
 
 
-# ========= CSS / cabeçalho / upload (idêntico aos anteriores, apenas resumido) =========
+# ==================== CSS / Cabeçalho / Upload ====================
 
 CUSTOM_CSS = """
 <style>
@@ -700,8 +718,8 @@ def cabecalho_ufpe():
                 <span>Calculadora de Ângulos e Distâncias</span>
             </div>
             <div class="app-subtitle">
-                Médias de Hz e Z, DH, Hz Ré/Vante, azimute de referência, polígono médio
-                e triângulos por série com ordem automática baseada nas distâncias.
+                Médias de Hz e Z, DH, Hz Ré/Vante, polígono médio com azimute de referência
+                e triângulo por série construído apenas com DH da série e teorema dos cossenos.
             </div>
             """,
             unsafe_allow_html=True,
@@ -796,7 +814,7 @@ def processar_upload(uploaded):
         return df_valid[REQUIRED_COLS].copy()
 
 
-# ========= Seção de cálculos =========
+# ==================== Seção de cálculos ====================
 
 def secao_calculos(df_uso: pd.DataFrame):
     st.markdown(
@@ -809,8 +827,8 @@ def secao_calculos(df_uso: pd.DataFrame):
         unsafe_allow_html=True,
     )
 
+    # 3.1 Linha a linha
     res = calcular_linha_a_linha(df_uso)
-
     st.markdown("##### Tabela linha a linha (cada série PD/PI)")
     cols_linha = [
         "EST",
@@ -831,17 +849,12 @@ def secao_calculos(df_uso: pd.DataFrame):
         )
     st.dataframe(df_linha, use_container_width=True)
 
+    # 3.2 Médias por par
     df_par = agregar_por_par(res)
 
-    # tabela de distâncias médias simétricas e ordem dos vértices
+    st.markdown("##### Distâncias médias simétricas entre pontos (diagnóstico)")
     df_dist = tabela_distancias_medias_simetricas(df_par)
-    st.markdown("##### Distâncias médias simétricas entre pontos (maior → menor)")
     st.dataframe(df_dist, use_container_width=True)
-
-    ordem_estacoes = detectar_ordem_estacoes_por_distancia(df_par)
-    st.markdown(
-        f"**Ordem dos vértices detectada pela distância (triângulo):** {', '.join(ordem_estacoes)}"
-    )
 
     st.markdown("##### Medição Angular Horizontal")
     tab_hz_par, tab_hz_re_vante = construir_tabela_hz_com_re_vante(df_par)
@@ -854,27 +867,35 @@ def secao_calculos(df_uso: pd.DataFrame):
     tab_z = tabela_medicao_angular_vertical(df_par)
     st.dataframe(tab_z, use_container_width=True)
 
-    # ===== Azimute referência / polígono médio =====
+    # 4. Polígono médio com azimute de referência (opcional)
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>4. Azimute de referência e polígono médio</span>
+            <span>4. Azimute de referência e polígono médio (opcional)</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    if len(ordem_estacoes) >= 2:
-        est_inicio, est_segundo = ordem_estacoes[0], ordem_estacoes[1]
+    # escolha padrão da primeira estação encontrada
+    if len(df_par["EST"].unique()) > 0:
+        est_inicio = str(df_par["EST"].iloc[0])
     else:
-        est_inicio, est_segundo = "P1", "P2"
+        est_inicio = "P1"
+
+    # tenta pegar um PV qualquer associado a essa estação
+    sub = df_par[df_par["EST"] == est_inicio]
+    if not sub.empty:
+        est_segundo = str(sub["PV"].iloc[0])
+    else:
+        est_segundo = "P2"
 
     st.markdown(
         f"""
         Informe o <b>azimute conhecido</b> da direção <code>{est_inicio} → {est_segundo}</code>
         (em graus, 0° no Norte, sentido horário). Esse azimute será usado como referência
-        para alinhar todas as direções médias.
+        para alinhar as direções médias e obter um croqui aproximado (polígono médio).
         """,
         unsafe_allow_html=True,
     )
@@ -902,40 +923,45 @@ def secao_calculos(df_uso: pd.DataFrame):
     st.dataframe(df_show_az, use_container_width=True)
 
     df_coords, coords_dict = calcular_coordenadas(df_par_az, est_inicio)
-
     st.markdown("**Coordenadas aproximadas (origem na primeira estação detectada):**")
     st.dataframe(df_coords, use_container_width=True)
 
     st.markdown("**Triângulo selecionável com base no polígono médio:**")
     desenhar_poligono_selecionavel(coords_dict)
 
-    # ===== Figuras por série (triângulo) =====
+    # 5. Triângulo por série (apenas DH da série + cossenos)
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>5. Triângulos por série (usando DH da série)</span>
+            <span>5. Triângulo por série (DH da série + teorema dos cossenos)</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
     st.markdown(
-        f"""
-        O triângulo é definido pelos pontos: <code>{' → '.join(ordem_estacoes)}</code>.<br>
-        A ordem foi inferida a partir das distâncias médias: lado maior, intermediário, menor.
+        """
+        Se os dados contiverem exatamente <b>3 pontos distintos</b> (estações/visadas),
+        o app reconhece que se trata de um triângulo e, para cada série,
+        monta essa figura apenas com as distâncias horizontais (DH) da própria série,
+        usando o <i>teorema dos cossenos</i> para obter os ângulos internos.
+        Nenhum azimute real ou coordenada de terreno é utilizado aqui —
+        é um croqui puramente geométrico das medições.
         """,
         unsafe_allow_html=True,
     )
 
-    res_serie = numerar_series_por_estacao(res)
-    figuras = figuras_por_serie_triangulo_por_distancia(res_serie, az_ref, ordem_estacoes)
+    pontos_tri, figuras = figuras_triangulo_por_serie(res, df_par)
 
-    if not figuras:
+    if pontos_tri is None or not figuras:
         st.info(
-            "Não foi possível montar triângulos por série. "
-            "É necessário ter pelo menos três estações com séries compatíveis."
+            "Não foi possível montar o triângulo por série. "
+            "Verifique se há exatamente três pontos distintos e DH para todos os lados em cada série."
         )
     else:
+        A, B, C = pontos_tri
+        st.markdown(f"**Triângulo reconhecido pelos pontos:** `{A}`, `{B}`, `{C}`")
+
         series_disponiveis = sorted(figuras.keys())
         serie_escolhida = st.selectbox(
             "Escolha a série para visualizar o triângulo correspondente:",
@@ -945,46 +971,69 @@ def secao_calculos(df_uso: pd.DataFrame):
 
         dados = figuras[serie_escolhida]
         coords_t = dados["coords"]
-        df_lados_t = dados["df_lados"]
-        df_ang_t = dados["df_ang"]
+        ang_t = dados["angulos"]
+        dhs_t = dados["DH"]
         area_t = dados["area"]
 
-        E1, E2, E3 = ordem_estacoes
-        P1, P2, P3 = coords_t[E1], coords_t[E2], coords_t[E3]
-
-        xs_t = [P1[0], P2[0], P3[0], P1[0]]
-        ys_t = [P1[1], P2[1], P3[1], P1[1]]
+        # Desenho do triângulo A–B–C
+        P_A = coords_t["A"]
+        P_B = coords_t["B"]
+        P_C = coords_t["C"]
+        xs_t = [P_A[0], P_B[0], P_C[0], P_A[0]]
+        ys_t = [P_A[1], P_B[1], P_C[1], P_A[1]]
 
         fig_t, ax_t = plt.subplots()
         ax_t.plot(xs_t, ys_t, "-o", color="#8B0000", lw=2.3, markersize=8)
-
-        ax_t.text(P1[0], P1[1], f" {E1}", fontsize=10, color="#111827")
-        ax_t.text(P2[0], P2[1], f" {E2}", fontsize=10, color="#111827")
-        ax_t.text(P3[0], P3[1], f" {E3}", fontsize=10, color="#111827")
+        ax_t.text(P_A[0], P_A[1], f" {A}", fontsize=10, color="#111827")
+        ax_t.text(P_B[0], P_B[1], f" {B}", fontsize=10, color="#111827")
+        ax_t.text(P_C[0], P_C[1], f" {C}", fontsize=10, color="#111827")
 
         ax_t.set_aspect("equal", "box")
-        ax_t.set_xlabel("E (m)")
-        ax_t.set_ylabel("N (m)")
-        ax_t.set_title(f"Triângulo da Série {serie_escolhida} ({E1}–{E2}–{E3}) — DH da série")
+        ax_t.set_xlabel("x (unid. geométrica)")
+        ax_t.set_ylabel("y (unid. geométrica)")
+        ax_t.set_title(
+            f"Triângulo da Série {serie_escolhida} ({A}–{B}–{C}) "
+            f"— construído com DH da série + cossenos"
+        )
         ax_t.grid(True, linestyle="--", alpha=0.3)
 
         st.pyplot(fig_t)
 
-        st.markdown("**Lados do triângulo (geométricos vs. DH da série):**")
+        st.markdown("**Lados do triângulo (DH da série):**")
+        df_lados_t = pd.DataFrame(
+            {
+                "Lado": [f"{A}–{B}", f"{B}–{C}", f"{A}–{C}"],
+                "DH da série (m)": [
+                    round(dhs_t["AB"], 3),
+                    round(dhs_t["BC"], 3),
+                    round(dhs_t["AC"], 3),
+                ],
+            }
+        )
         st.dataframe(df_lados_t, use_container_width=True)
 
-        st.markdown("**Ângulos internos do triângulo da série:**")
+        st.markdown("**Ângulos internos do triângulo (°):**")
+        df_ang_t = pd.DataFrame(
+            {
+                "Vértice": [A, B, C],
+                "Ângulo interno (°)": [
+                    round(ang_t["A"], 4),
+                    round(ang_t["B"], 4),
+                    round(ang_t["C"], 4),
+                ],
+            }
+        )
         st.dataframe(df_ang_t, use_container_width=True)
 
-        st.markdown(f"**Área da figura da série {serie_escolhida}:** `{area_t:.4f} m²`")
+        st.markdown(f"**Área do triângulo (série {serie_escolhida}):** `{area_t:.4f} m²`")
 
 
 def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v3.2 — ordem dos vértices baseada nas distâncias médias (maior, intermediária, menor),
-            triângulos por série com DH da própria série.</code>.
+            Versão do app: <code>UFPE_v4.0 — triângulo por série usando apenas DH da série e teorema dos cossenos;
+            Hz/Z médios, Ré/Vante, polígono médio com azimute de referência.</code>.
         </p>
         """,
         unsafe_allow_html=True,
@@ -992,7 +1041,7 @@ def rodape():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ========= Fluxo principal =========
+# ==================== Fluxo principal ====================
 
 cabecalho_ufpe()
 uploaded = secao_modelo_e_upload()
