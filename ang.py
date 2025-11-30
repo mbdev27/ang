@@ -1,6 +1,6 @@
 # app.py
 # Calculadora de Ângulos e Distâncias — UFPE
-# Hz/Z/DH + Ré/Vante + Polígono com azimute de referência e identidade visual UFPE
+# Hz/Z/DH + Ré/Vante + Polígono com azimute de referência + Figuras por série
 
 import io
 import math
@@ -530,7 +530,7 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     col_sel1, col_sel2, col_sel3 = st.columns(3)
     with col_sel1:
         p_a = st.selectbox(
-            "Vértice A do triângulo",
+            "Vértice A do triângulo (coordenadas do polígono médio)",
             options=pontos_disponiveis,
             index=0,
             key="tri_pt_a",
@@ -538,7 +538,7 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     with col_sel2:
         opcoes_b = [p for p in pontos_disponiveis if p != p_a]
         p_b = st.selectbox(
-            "Vértice B do triângulo",
+            "Vértice B do triângulo (coordenadas do polígono médio)",
             options=opcoes_b,
             index=0,
             key="tri_pt_b",
@@ -549,7 +549,7 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
             st.info("Selecione A e B diferentes para disponibilizar um C.")
             return
         p_c = st.selectbox(
-            "Vértice C do triângulo",
+            "Vértice C do triângulo (coordenadas do polígono médio)",
             options=opcoes_c,
             index=0,
             key="tri_pt_c",
@@ -559,7 +559,7 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     B = coords[p_b]
     C = coords[p_c]
 
-    # Distâncias
+    # Distâncias geométricas
     dAB = math.hypot(B[0] - A[0], B[1] - A[1])
     dBC = math.hypot(C[0] - B[0], C[1] - B[1])
     dCA = math.hypot(A[0] - C[0], A[1] - C[1])
@@ -598,17 +598,17 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     ax.set_aspect("equal", "box")
     ax.set_xlabel("E (m)")
     ax.set_ylabel("N (m)")
-    ax.set_title(f"Triângulo {p_a}-{p_b}-{p_c} (distâncias e ângulos internos)")
+    ax.set_title(f"Triângulo {p_a}-{p_b}-{p_c} (coordenadas do polígono médio)")
     ax.grid(True, linestyle="--", alpha=0.3)
 
     st.pyplot(fig)
 
     # tabelas resumo
-    st.markdown("**Resumo dos lados do triângulo selecionado:**")
+    st.markdown("**Resumo dos lados (geométricos) do triângulo selecionado:**")
     df_lados = pd.DataFrame(
         {
             "Lado": [f"{p_a}–{p_b}", f"{p_b}–{p_c}", f"{p_c}–{p_a}"],
-            "Distância (m)": [round(dAB, 3), round(dBC, 3), round(dCA, 3)],
+            "Distância geométrica (m)": [round(dAB, 3), round(dBC, 3), round(dCA, 3)],
         }
     )
     st.dataframe(df_lados, use_container_width=True)
@@ -621,6 +621,143 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
         }
     )
     st.dataframe(df_ang, use_container_width=True)
+
+
+# ========= NOVO: regra das séries para montar figuras (sem médias) =========
+
+def numerar_series_por_estacao(res_linha: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adiciona uma coluna SERIE a res_linha, numerando sequencialmente
+    as leituras dentro de cada estação (EST) na ordem em que aparecem:
+    1ª leitura em EST=P1 -> SERIE 1, 2ª -> SERIE 2, etc.
+
+    Essa numeração é usada para a regra:
+      - Figura 1 usa todas as leituras de SERIE=1 de cada estação
+      - Figura 2 usa SERIE=2, etc.
+    """
+    df = res_linha.copy()
+    df["SERIE"] = (
+        df.groupby("EST")
+        .cumcount()
+        .astype(int) + 1  # começa em 1
+    )
+    return df
+
+
+def figuras_por_serie_triangulo_p1_p2_p3(res_linha_serie: pd.DataFrame, az_ref_p1p2: float):
+    """
+    Para cada SERIE s, monta um triângulo P1–P2–P3 usando SOMENTE
+    as leituras da série s de cada estação, sem médias.
+    - Usa Hz_med_deg da linha + az_ref_p1p2 para alinhar azimutes.
+    - Usa DH_med_m (linha a linha) como distâncias.
+    Retorna:
+      - dicionário: serie -> {coords, df_lados, df_ang, area}
+    """
+    resultados = {}
+
+    # Precisamos pelo menos das três estações P1, P2, P3
+    estacoes_necessarias = {"P1", "P2", "P3"}
+    estacoes_presentes = set(res_linha_serie["EST"].unique())
+    if not estacoes_necessarias.issubset(estacoes_presentes):
+        return resultados  # vazio
+
+    # Hz de P1→P2 (usar a primeira ocorrência como base)
+    linha_p1p2 = res_linha_serie[(res_linha_serie["EST"] == "P1") & (res_linha_serie["PV"] == "P2")].head(1)
+    if linha_p1p2.empty:
+        return resultados
+
+    hz_p1p2 = linha_p1p2["Hz_med_deg"].iloc[0]
+    offset = az_ref_p1p2 - hz_p1p2
+
+    def linha_para_az_e_dh(linha):
+        hz = linha["Hz_med_deg"].iloc[0]
+        dh = linha["DH_med_m"].iloc[0]
+        az = (hz + offset) % 360.0
+        return az, dh
+
+    # Número máximo de séries utilizáveis (mínimo por estação)
+    n_series = int(
+        res_linha_serie.groupby("EST")["SERIE"].max().min()
+    )
+
+    for s in range(1, n_series + 1):
+        # uma leitura da série s em cada estação
+        lp1 = res_linha_serie[(res_linha_serie["EST"] == "P1") & (res_linha_serie["SERIE"] == s)]
+        lp2 = res_linha_serie[(res_linha_serie["EST"] == "P2") & (res_linha_serie["SERIE"] == s)]
+        lp3 = res_linha_serie[(res_linha_serie["EST"] == "P3") & (res_linha_serie["SERIE"] == s)]
+
+        if lp1.empty or lp2.empty or lp3.empty:
+            continue  # série incompleta
+
+        # escolhemos quem visa quem para fechar o triângulo
+        # convenção: P1→P3, P3→P2, P2→P1
+        l_p1_p3 = lp1.iloc[[0]]
+        l_p3_p2 = lp3.iloc[[0]]
+        l_p2_p1 = lp2.iloc[[0]]
+
+        # direções e Dh
+        az_p1_p3, dh_p1_p3 = linha_para_az_e_dh(l_p1_p3)
+        az_p3_p2, dh_p3_p2 = linha_para_az_e_dh(l_p3_p2)
+        az_p2_p1, dh_p2_p1 = linha_para_az_e_dh(l_p2_p1)
+
+        # coordenadas da figura da série s
+        P1 = (0.0, 0.0)
+
+        de13, dn13 = delta_from_azimuth(az_p1_p3, dh_p1_p3)
+        P3 = (P1[0] + de13, P1[1] + dn13)
+
+        de32, dn32 = delta_from_azimuth(az_p3_p2, dh_p3_p2)
+        P2 = (P3[0] + de32, P3[1] + dn32)
+
+        coords = {"P1": P1, "P2": P2, "P3": P3}
+
+        # distâncias geométricas
+        d12 = math.hypot(P2[0] - P1[0], P2[1] - P1[1])
+        d23 = math.hypot(P3[0] - P2[0], P3[1] - P2[1])
+        d31 = math.hypot(P1[0] - P3[0], P1[1] - P3[1])
+
+        df_lados = pd.DataFrame(
+            {
+                "Lado": ["P1–P2", "P2–P3", "P3–P1"],
+                "Distância geométrica (m)": [round(d12, 3), round(d23, 3), round(d31, 3)],
+                "DH da série (m)": [
+                    round(dh_p2_p1, 3),
+                    round(dh_p3_p2, 3),
+                    round(dh_p1_p3, 3),
+                ],
+            }
+        )
+
+        # ângulos internos
+        ang_P1 = angulo_interno(P3, P1, P2)
+        ang_P2 = angulo_interno(P1, P2, P3)
+        ang_P3 = angulo_interno(P2, P3, P1)
+
+        df_ang = pd.DataFrame(
+            {
+                "Vértice": ["P1", "P2", "P3"],
+                "Ângulo interno (°)": [round(ang_P1, 4), round(ang_P2, 4), round(ang_P3, 4)],
+            }
+        )
+
+        # área (Shoelace)
+        x1, y1 = P1
+        x2, y2 = P2
+        x3, y3 = P3
+        area = abs(
+            x1 * (y2 - y3)
+            + x2 * (y3 - y1)
+            + x3 * (y1 - y2)
+        ) / 2.0
+
+        resultados[s] = {
+            "coords": coords,
+            "df_lados": df_lados,
+            "df_ang": df_ang,
+            "area": area,
+        }
+
+    return resultados
 
 
 # ==================== CSS e identidade visual UFPE ====================
@@ -803,7 +940,6 @@ def cabecalho_ufpe():
                 unsafe_allow_html=True,
             )
 
-        # Linha com campos: Professor, Local, Equipamento, Data, Patrimônio
         st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
 
         col1, col2, col3 = st.columns([2, 2, 2])
@@ -818,7 +954,6 @@ def cabecalho_ufpe():
 
         st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
 
-        # Título do app
         st.markdown(
             """
             <div class="app-title">
@@ -958,7 +1093,7 @@ def secao_calculos(df_uso: pd.DataFrame):
     ]
     df_linha = res[cols_linha].copy()
 
-    # Formata DH com 3 casas (você ajustou para ponto mesmo)
+    # Formata DH com 3 casas (mantendo ponto)
     for c in ["DH_PD_m", "DH_PI_m", "DH_med_m"]:
         df_linha[c] = df_linha[c].apply(
             lambda x: f"{x:.3f}".replace(".", ".") if pd.notna(x) else ""
@@ -1014,12 +1149,12 @@ def secao_calculos(df_uso: pd.DataFrame):
     tab_z = tabela_medicao_angular_vertical(df_par)
     st.dataframe(tab_z, use_container_width=True)
 
-    # ==================== Azimute de referência e polígono ====================
+    # ==================== Azimute de referência e polígono médio ====================
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>4. Azimute de referência e polígono</span>
+            <span>4. Azimute de referência e polígono médio</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1061,15 +1196,84 @@ def secao_calculos(df_uso: pd.DataFrame):
     st.markdown("**Coordenadas aproximadas (origem em P1 = 0,0):**")
     st.dataframe(df_coords, use_container_width=True)
 
-    st.markdown("**Triângulo com pontos selecionáveis (distâncias e ângulos internos):**")
+    st.markdown("**Triângulo selecionável com base no polígono médio:**")
     desenhar_poligono_selecionavel(coords_dict)
+
+    # ==================== NOVO: Figuras por série (regra das leituras) ====================
+    st.markdown(
+        """
+        <div class="section-title">
+            <span class="dot"></span>
+            <span>5. Figuras por série (sem médias, regra das leituras)</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+        Para cada série <code>s</code> (1ª, 2ª, 3ª, ...), monta-se uma figura usando
+        <b>apenas</b> as leituras de índice <code>s</code> de cada estação.
+        Aqui, para P1–P2–P3, geramos um triângulo por série:
+        Figura 1 = 1ª leitura de P1, P2, P3; Figura 2 = 2ª leitura; e assim por diante.
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Numerar séries por estação
+    res_serie = numerar_series_por_estacao(res)
+    figuras = figuras_por_serie_triangulo_p1_p2_p3(res_serie, az_ref_p1p2)
+
+    if not figuras:
+        st.info("Não foi possível montar figuras por série (é necessário ter P1, P2 e P3 com leituras compatíveis).")
+    else:
+        series_disponiveis = sorted(figuras.keys())
+        serie_escolhida = st.selectbox(
+            "Escolha a série para visualizar o triângulo correspondente:",
+            options=series_disponiveis,
+            format_func=lambda s: f"Série {s}",
+        )
+
+        dados = figuras[serie_escolhida]
+        coords_t = dados["coords"]
+        df_lados_t = dados["df_lados"]
+        df_ang_t = dados["df_ang"]
+        area_t = dados["area"]
+
+        P1t = coords_t["P1"]
+        P2t = coords_t["P2"]
+        P3t = coords_t["P3"]
+
+        xs_t = [P1t[0], P2t[0], P3t[0], P1t[0]]
+        ys_t = [P1t[1], P2t[1], P3t[1], P1t[1]]
+
+        fig_t, ax_t = plt.subplots()
+        ax_t.plot(xs_t, ys_t, "-o", color="#8B0000", lw=2.3, markersize=8)
+        ax_t.text(P1t[0], P1t[1], " P1", fontsize=10, color="#111827")
+        ax_t.text(P2t[0], P2t[1], " P2", fontsize=10, color="#111827")
+        ax_t.text(P3t[0], P3t[1], " P3", fontsize=10, color="#111827")
+
+        ax_t.set_aspect("equal", "box")
+        ax_t.set_xlabel("E (m)")
+        ax_t.set_ylabel("N (m)")
+        ax_t.set_title(f"Triângulo da Série {serie_escolhida} (P1–P2–P3, sem médias)")
+        ax_t.grid(True, linestyle="--", alpha=0.3)
+
+        st.pyplot(fig_t)
+
+        st.markdown("**Lados do triângulo (geométricos vs. DH da série):**")
+        st.dataframe(df_lados_t, use_container_width=True)
+
+        st.markdown("**Ângulos internos do triângulo da série:**")
+        st.dataframe(df_ang_t, use_container_width=True)
+
+        st.markdown(f"**Área da figura da série {serie_escolhida}:** `{area_t:.4f} m²`")
 
 
 def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v2.2 — Hz/Z, Ré/Vante, azimute de referência, coordenadas e triângulo selecionável com identidade visual UFPE.</code>.
+            Versão do app: <code>UFPE_v2.3 — Hz/Z, Ré/Vante, azimute de referência, polígono médio e figuras por série (regra das leituras).</code>.
         </p>
         """,
         unsafe_allow_html=True,
