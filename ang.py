@@ -1,13 +1,12 @@
 # app.py
 # UFPE - Calculadora de Ângulos e Distâncias
-# Versão enxuta para redefinir regras geométricas
+# Versão sem qualquer referência a Ré/Vante
 # - Z é zenital/vertical, com DH = DI × seno(Z)
 # - SEQ indica a ordem da medição na série
-# - Calcula Hz/Z/DH médios, Ré/Vante e diagnósticos de distâncias
 
 import io
 import math
-from typing import List, Tuple, Dict
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -26,13 +25,6 @@ REQUIRED_COLS_BASE = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "D
 OPTIONAL_COLS = ["SEQ"]  # SEQ = número da medição na série em cada estação
 REQUIRED_COLS_ALL = REQUIRED_COLS_BASE + OPTIONAL_COLS
 
-# Mapa P1–P3 de exemplo para Hz Ré/Vante (pode ser adaptado)
-RE_VANTE_MAP: Dict[str, Tuple[str, str]] = {
-    "P1": ("P2", "P3"),
-    "P2": ("P1", "P3"),
-    "P3": ("P1", "P2"),
-}
-
 # ==================== Funções auxiliares de ângulo ====================
 
 def parse_angle_to_decimal(value: str) -> float:
@@ -41,13 +33,13 @@ def parse_angle_to_decimal(value: str) -> float:
     s = str(value).strip()
     if s == "":
         return float("nan")
-    # decimal direto
+    # decimal direto?
     try:
         if all(ch.isdigit() or ch in ".,-+" for ch in s):
             return float(s.replace(",", "."))
     except Exception:
         pass
-    # DMS
+    # formato DMS
     for ch in ["°", "º", "'", "’", "´", "′", '"', "″"]:
         s = s.replace(ch, " ")
     s = s.replace(",", ".")
@@ -279,49 +271,21 @@ def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
 
 # ==================== Tabelas Hz e Z ====================
 
-def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def tabela_medicao_angular_horizontal(df_par: pd.DataFrame) -> pd.DataFrame:
     hz_pd_med_dms = df_par["Hz_PD_med_deg"].apply(decimal_to_dms)
     hz_pi_med_dms = df_par["Hz_PI_med_deg"].apply(decimal_to_dms)
     hz_med_dms = df_par["Hz_med_deg_par"].apply(decimal_to_dms)
 
-    base = pd.DataFrame(
+    tab = pd.DataFrame(
         {
             "EST": df_par["EST"],
             "PV": df_par["PV"],
             "Hz PD (médio)": hz_pd_med_dms,
             "Hz PI (médio)": hz_pi_med_dms,
             "Hz Médio (PD/PI)": hz_med_dms,
-            "Hz_med_deg_par": df_par["Hz_med_deg_par"],
         }
     )
-
-    rows_re_vante = []
-    for est, (pv_re, pv_vante) in RE_VANTE_MAP.items():
-        sub_est = base[base["EST"] == est].copy()
-        if sub_est.empty:
-            continue
-        hz_re_s = sub_est.loc[sub_est["PV"] == pv_re, "Hz_med_deg_par"]
-        hz_va_s = sub_est.loc[sub_est["PV"] == pv_vante, "Hz_med_deg_par"]
-        if len(hz_re_s) == 0 or len(hz_va_s) == 0:
-            continue
-        hz_re = hz_re_s.iloc[0]
-        hz_va = hz_va_s.iloc[0]
-        alpha = (hz_va - hz_re + 360.0) % 360.0
-        rows_re_vante.append(
-            {
-                "EST": est,
-                "PV_Ré": pv_re,
-                "PV_Vante": pv_vante,
-                "Hz_Ré (deg)": hz_re,
-                "Hz_Vante (deg)": hz_va,
-                "Hz_Ré (DMS)": decimal_to_dms(hz_re),
-                "Hz_Vante (DMS)": decimal_to_dms(hz_va),
-                "α (deg)": alpha,
-                "α (DMS)": decimal_to_dms(alpha),
-            }
-        )
-    df_hz_re_vante = pd.DataFrame(rows_re_vante)
-    return base, df_hz_re_vante
+    return tab
 
 
 def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
@@ -348,7 +312,7 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
 
 def tabela_distancias_medias_simetricas(df_par: pd.DataFrame) -> pd.DataFrame:
     aux = df_par[["EST", "PV", "DH_med_m_par"]].copy()
-    registros: Dict[Tuple[str, str], List[float]] = {}
+    registros = {}
 
     for _, row in aux.iterrows():
         a = str(row["EST"])
@@ -434,9 +398,8 @@ def cabecalho_ufpe():
                 <span>Calculadora de Ângulos e Distâncias</span>
             </div>
             <div class="app-subtitle">
-                Médias de Hz e Z, DH = DI·sen(Z) (Z zenital/vertical), Hz Ré/Vante
-                e diagnósticos de distâncias. Versão preparada para definir novas
-                regras de formação de figuras geométricas.
+                Médias de Hz e Z, DH = DI·sen(Z) (Z zenital/vertical) e diagnósticos de distâncias.
+                Versão sem identificação automática de ré/vante, preparada para novas regras geométricas.
             </div>
             """,
             unsafe_allow_html=True,
@@ -578,12 +541,9 @@ def secao_calculos(df_uso: pd.DataFrame):
     df_dist = tabela_distancias_medias_simetricas(df_par)
     st.dataframe(df_dist, use_container_width=True)
 
-    st.markdown("##### Medição Angular Horizontal")
-    tab_hz_par, tab_hz_re_vante = construir_tabela_hz_com_re_vante(df_par)
-    st.markdown("**Médias por par (EST–PV):**")
-    st.dataframe(tab_hz_par.drop(columns=["Hz_med_deg_par"]), use_container_width=True)
-    st.markdown("**Hz Ré/Vante e ângulo reduzido (por estação):**")
-    st.dataframe(tab_hz_re_vante, use_container_width=True)
+    st.markdown("##### Medição Angular Horizontal (médias por par)")
+    tab_hz = tabela_medicao_angular_horizontal(df_par)
+    st.dataframe(tab_hz, use_container_width=True)
 
     st.markdown("##### Medição Angular Vertical/Zenital")
     tab_z = tabela_medicao_angular_vertical(df_par)
@@ -601,8 +561,8 @@ def secao_calculos(df_uso: pd.DataFrame):
     st.markdown(
         """
         A partir daqui, vamos definir como o app deve usar os <b>Hz médios</b> e as <b>distâncias DH</b>
-        (por série, por estação, etc.) para montar triângulos, quadriláteros ou outros polígonos
-        de forma totalmente coerente com o seu roteiro de campo (ordem de estações, ré/vante, etc.).
+        (por série, por estação, etc.) para montar triângulos, quadriláteros ou outros polígonos,
+        segundo as regras que você definir (estação base, ângulos entre visadas, etc.).
         """,
         unsafe_allow_html=True,
     )
@@ -612,7 +572,7 @@ def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v5.0 — Base de Hz/Z/DH com SEQ pronta; regras de figuras geométricas a definir.</code>.
+            Versão do app: <code>UFPE_v5.1 — Hz/Z/DH com SEQ, sem identificação de ré/vante; regras geométricas a definir.</code>.
         </p>
         """,
         unsafe_allow_html=True,
