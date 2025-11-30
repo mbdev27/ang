@@ -801,132 +801,211 @@ if df_par is not None and not df_par.empty:
             st.dataframe(ang_df, use_container_width=True)
             st.markdown(f"**Área do triângulo (Heron):** `{area:.4f} m²`")
 
-        # ---------- MODO 2: leituras específicas, com seleção automática do circuito ----------
+      # ---------- MODO 2: leituras específicas, com seleção automática do circuito ----------
+else:
+    st.markdown(
+        """
+        Escolha uma combinação <b>Estação (EST) – Ponto de Visada (PV)</b>.
+        O programa seleciona automaticamente as outras duas estações
+        necessárias para fechar o triângulo P1–P2–P3:
+        <ul>
+          <li>Se você escolher <b>P1 ⇒ P3</b>, o programa usará também <b>P3 ⇒ P2</b> e <b>P2 ⇒ P1</b>;</li>
+          <li>Se você escolher <b>P3 ⇒ P2</b>, o programa usará também <b>P2 ⇒ P1</b> e <b>P1 ⇒ P3</b>;</li>
+          <li>Se você escolher <b>P2 ⇒ P1</b>, o programa usará também <b>P1 ⇒ P3</b> e <b>P3 ⇒ P2</b>.</li>
+        </ul>
+        O triângulo é sempre P1–P3–P2, partindo de P1 como referência.
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # usamos df_par (médias por par) para as distâncias médias
+    df3 = df_par[
+        df_par["EST"].isin(["P1", "P2", "P3"]) &
+        df_par["PV"].isin(["P1", "P2", "P3"])
+    ].copy()
+
+    if df3.empty:
+        st.info("Não há médias entre P1, P2 e P3 suficientes para este modo.")
+    else:
+        df3["par"] = df3["EST"].astype(str).str.upper() + "⇒" + df3["PV"].astype(str).str.upper()
+        pares_disponiveis = sorted(df3["par"].unique())
+        pares_validos = [p for p in pares_disponiveis if p in ["P1⇒P3", "P3⇒P2", "P2⇒P1"]]
+
+        if not pares_validos:
+            st.warning("Não foram encontradas médias P1⇒P3, P3⇒P2 ou P2⇒P1.")
         else:
-            st.markdown(
-                """
-                Escolha uma combinação <b>Estação (EST) – Ponto de Visada (PV)</b>.
-                O programa seleciona automaticamente as outras duas estações
-                necessárias para fechar o triângulo P1–P2–P3:
-                <ul>
-                  <li>Se você escolher <b>P1 ⇒ P3</b>, o programa usará também <b>P3 ⇒ P2</b> e <b>P2 ⇒ P1</b>;</li>
-                  <li>Se você escolher <b>P3 ⇒ P2</b>, o programa usará também <b>P2 ⇒ P1</b> e <b>P1 ⇒ P3</b>;</li>
-                  <li>Se você escolher <b>P2 ⇒ P1</b>, o programa usará também <b>P1 ⇒ P3</b> e <b>P3 ⇒ P2</b>.</li>
-                </ul>
-                """,
-                unsafe_allow_html=True,
+            par_escolhido = st.selectbox(
+                "Escolha um par Estação ⇒ PV para iniciar o triângulo:",
+                options=pares_validos,
+                index=pares_validos.index("P1⇒P3") if "P1⇒P3" in pares_validos else 0,
             )
 
-            # usamos df_par (médias por par) para as distâncias
-            df3 = df_par[
-                df_par["EST"].isin(["P1", "P2", "P3"]) &
-                df_par["PV"].isin(["P1", "P2", "P3"])
-            ].copy()
-            if df3.empty:
-                st.info("Não há médias entre P1, P2 e P3 suficientes para este modo.")
+            # circuito sempre P1→P3, P3→P2, P2→P1
+            par_13 = "P1⇒P3"
+            par_32 = "P3⇒P2"
+            par_21 = "P2⇒P1"
+
+            def dh_med_par(par_str):
+                sub = df3[df3["par"] == par_str]
+                if sub.empty:
+                    return np.nan
+                return float(sub["DH_med_m_par"].iloc[0])
+
+            L13 = dh_med_par(par_13)  # lado P1–P3
+            L32 = dh_med_par(par_32)  # lado P3–P2
+            L21 = dh_med_par(par_21)  # lado P2–P1
+
+            if any(pd.isna(v) or v == 0 for v in [L13, L32, L21]):
+                st.warning(
+                    "Não foi possível calcular todas as distâncias médias. "
+                    "Verifique se existem médias para P1⇒P3, P3⇒P2 e P2⇒P1."
+                )
             else:
-                df3["par"] = df3["EST"].astype(str).str.upper() + "⇒" + df3["PV"].astype(str).str.upper()
-                pares_disponiveis = sorted(df3["par"].unique())
-                pares_validos = [p for p in pares_disponiveis if p in ["P1⇒P3", "P3⇒P2", "P2⇒P1"]]
+                # ---- Construímos triângulo abstrato P1–P3–P2 partindo de P1 ----
+                # Vértices na ordem: P1 (origem), P3, P2
+                # Lados:
+                #   P1–P3 = L13
+                #   P3–P2 = L32
+                #   P2–P1 = L21
 
-                if not pares_validos:
-                    st.warning("Não foram encontradas médias P1⇒P3, P3⇒P2 ou P2⇒P1.")
-                else:
-                    par_escolhido = st.selectbox(
-                        "Escolha um par Estação ⇒ PV para iniciar o triângulo:",
-                        options=pares_validos,
-                        index=pares_validos.index("P1⇒P3") if "P1⇒P3" in pares_validos else 0,
-                    )
+                # Nomenclatura para lei dos cossenos:
+                #   a = lado oposto a P1 = entre P3 e P2 = L32
+                #   b = lado oposto a P3 = entre P1 e P2 = L21
+                #   c = lado oposto a P2 = entre P1 e P3 = L13
+                a = L32
+                b = L21
+                c = L13
 
-                    # circuito sempre P1→P3, P3→P2, P2→P1
-                    par_13 = "P1⇒P3"
-                    par_32 = "P3⇒P2"
-                    par_21 = "P2⇒P1"
+                coords_tri = {
+                    "P1": (0.0, 0.0),
+                    # Colocamos P3 no eixo X positivo
+                    "P3": (c, 0.0),
+                }
 
-                    def dh_med_par(par_str):
-                        sub = df3[df3["par"] == par_str]
-                        if sub.empty:
-                            return np.nan
-                        return float(sub["DH_med_m_par"].iloc[0])
+                # Calculamos posição de P2 usando a lei dos cossenos (ângulo em P1)
+                # c^2 = L13^2 = |P1P3|^2
+                # b^2 = L21^2 = |P1P2|^2
+                # a^2 = L32^2 = |P2P3|^2
+                cos_A = max(-1.0, min(1.0, (b**2 + c**2 - a**2) / (2 * b * c)))
+                ang_A_rad = math.acos(cos_A)
+                x2 = b * math.cos(ang_A_rad)
+                y2 = b * math.sin(ang_A_rad)
+                coords_tri["P2"] = (x2, y2)
 
-                    L13 = dh_med_par(par_13)  # P1–P3
-                    L23 = dh_med_par(par_32)  # P2–P3
-                    L12 = dh_med_par(par_21)  # P1–P2
+                # Função de distância usando coords_tri
+                def dist_t(p, q):
+                    x1, y1 = coords_tri[p]
+                    x2_, y2_ = coords_tri[q]
+                    return math.hypot(x2_ - x1, y2_ - y1)
 
-                    if any(pd.isna(v) or v == 0 for v in [L13, L23, L12]):
-                        st.warning(
-                            "Não foi possível calcular todas as distâncias médias. "
-                            "Verifique se existem médias para P1⇒P3, P3⇒P2 e P2⇒P1."
-                        )
-                    else:
-                        # Triângulo abstrato só com as distâncias médias
-                        a = L23  # lado oposto a P1 (P2–P3)
-                        b = L13  # lado oposto a P2 (P1–P3)
-                        c = L12  # lado oposto a P3 (P1–P2)
+                # Recalcula lados pelas coordenadas (para consistência)
+                d_P1P3 = dist_t("P1", "P3")
+                d_P3P2 = dist_t("P3", "P2")
+                d_P2P1 = dist_t("P2", "P1")
 
-                        coords_espec = {
-                            "P1": (0.0, 0.0),
-                            "P2": (c, 0.0),
-                        }
+                # Ângulos internos no triângulo P1–P3–P2
+                # Em P1: oposto ao lado P3–P2 (d_P3P2)
+                ang_P1 = angulo_oposto(d_P3P2, d_P1P3, d_P2P1)
+                # Em P3: oposto ao lado P2–P1
+                ang_P3 = angulo_oposto(d_P2P1, d_P1P3, d_P3P2)
+                # Em P2: oposto ao lado P1–P3
+                ang_P2 = angulo_oposto(d_P1P3, d_P2P1, d_P3P2)
 
-                        cos_A = max(-1.0, min(1.0, (b**2 + c**2 - a**2) / (2 * b * c)))
-                        ang_A_rad = math.acos(cos_A)
-                        x3 = b * math.cos(ang_A_rad)
-                        y3 = b * math.sin(ang_A_rad)
-                        coords_espec["P3"] = (x3, y3)
+                soma_ang = ang_P1 + ang_P2 + ang_P3
+                desvio = soma_ang - 180.0  # positivo ou negativo
 
-                        def dist_e(p, q):
-                            x1, y1 = coords_espec[p]
-                            x2, y2 = coords_espec[q]
-                            return math.hypot(x2 - x1, y2 - y1)
+                s_ = (d_P1P3 + d_P3P2 + d_P2P1) / 2.0
+                area_ = math.sqrt(max(0.0, s_ * (s_ - d_P1P3) * (s_ - d_P3P2) * (s_ - d_P2P1)))
 
-                        a_ = dist_e("P2", "P3")
-                        b_ = dist_e("P1", "P3")
-                        c_ = dist_e("P1", "P2")
+                # ---- Desenho do triângulo com distâncias e ângulos anotados ----
+                x1, y1 = coords_tri["P1"]
+                x3, y3 = coords_tri["P3"]
+                x2, y2 = coords_tri["P2"]
 
-                        angA_ = angulo_oposto(a_, b_, c_)
-                        angB_ = angulo_oposto(b_, a_, c_)
-                        angC_ = angulo_oposto(c_, a_, b_)
-                        s_ = (a_ + b_ + c_) / 2.0
-                        area_ = math.sqrt(max(0.0, s_ * (s_ - a_) * (s_ - b_) * (s_ - c_)))
+                # Lados
+                ax.plot([x1, x3], [y1, y3], "-k", linewidth=1.8, label="Triângulo escolhido")
+                ax.plot([x3, x2], [y3, y2], "-k", linewidth=1.8)
+                ax.plot([x2, x1], [y2, y1], "-k", linewidth=1.8)
 
-                        x1e, y1e = coords_espec["P1"]
-                        x2e, y2e = coords_espec["P2"]
-                        x3e, y3e = coords_espec["P3"]
-                        ax.plot(
-                            [x1e, x2e], [y1e, y2e],
-                            "-", color="crimson", linewidth=1.8, label="Triângulo escolhido"
-                        )
-                        ax.plot([x2e, x3e], [y2e, y3e], "-", color="crimson", linewidth=1.8)
-                        ax.plot([x1e, x3e], [y1e, y3e], "-", color="crimson", linewidth=1.8)
+                # Pontos já estão desenhados; reforçamos cor e tamanho
+                for nome, (x, y) in coords_tri.items():
+                    cor = {"P1": "red", "P2": "blue", "P3": "green"}.get(nome, "navy")
+                    ax.scatter(x, y, color=cor, s=55, zorder=4)
+                    ax.text(x, y, f" {nome}", fontsize=10, va="bottom", ha="left")
 
-                        st.markdown("#### Triângulo construído a partir das médias P1⇒P3, P3⇒P2, P2⇒P1")
+                # Posições para textos das distâncias (no meio de cada lado)
+                def meio(Pa, Pb):
+                    xA, yA = coords_tri[Pa]
+                    xB, yB = coords_tri[Pb]
+                    return (xA + xB) / 2.0, (yA + yB) / 2.0
 
-                        lados_df = pd.DataFrame({
-                            "Lado": ["P1–P2", "P2–P3", "P3–P1"],
-                            "Distância média (m)": [round(L12, 4), round(L23, 4), round(L13, 4)],
-                        })
-                        ang_df = pd.DataFrame({
-                            "Vértice": ["P1", "P2", "P3"],
-                            "Ângulo interno (graus)": [
-                                round(angA_, 4),
-                                round(angB_, 4),
-                                round(angC_, 4),
-                            ],
-                        })
+                mx_13, my_13 = meio("P1", "P3")
+                mx_32, my_32 = meio("P3", "P2")
+                mx_21, my_21 = meio("P2", "P1")
 
-                        st.markdown("##### Distâncias dos lados")
-                        st.dataframe(lados_df, use_container_width=True)
-                        st.markdown("##### Ângulos internos (lei dos cossenos)")
-                        st.dataframe(ang_df, use_container_width=True)
-                        st.markdown(f"**Área do triângulo (Heron):** `{area_:.4f} m²`")
+                ax.text(
+                    mx_13, my_13,
+                    f"P1–P3 = {d_P1P3:.4f} m",
+                    fontsize=8, color="black", ha="center", va="bottom"
+                )
+                ax.text(
+                    mx_32, my_32,
+                    f"P3–P2 = {d_P3P2:.4f} m",
+                    fontsize=8, color="black", ha="center", va="bottom"
+                )
+                ax.text(
+                    mx_21, my_21,
+                    f"P2–P1 = {d_P2P1:.4f} m",
+                    fontsize=8, color="black", ha="center", va="bottom"
+                )
 
-        ax.set_aspect("equal", "box")
-        ax.set_xlabel("X local (m)")
-        ax.set_ylabel("Y local (m)")
-        ax.grid(True, linestyle="--", alpha=0.4)
-        ax.legend(loc="best")
-        st.pyplot(fig)
+                # Textos dos ângulos próximos a cada vértice
+                ax.text(
+                    x1, y1,
+                    f" ∠P1 = {ang_P1:.4f}°",
+                    fontsize=8, color="darkred", ha="left", va="top"
+                )
+                ax.text(
+                    x3, y3,
+                    f" ∠P3 = {ang_P3:.4f}°",
+                    fontsize=8, color="darkgreen", ha="right", va="bottom"
+                )
+                ax.text(
+                    x2, y2,
+                    f" ∠P2 = {ang_P2:.4f}°",
+                    fontsize=8, color="darkblue", ha="left", va="bottom"
+                )
+
+                st.markdown("#### Triângulo (médias P1⇒P3, P3⇒P2, P2⇒P1) com distâncias e ângulos")
+
+                lados_df = pd.DataFrame({
+                    "Lado": ["P1–P3", "P3–P2", "P2–P1"],
+                    "Distância (m)": [
+                        round(d_P1P3, 4),
+                        round(d_P3P2, 4),
+                        round(d_P2P1, 4),
+                    ],
+                })
+                ang_df = pd.DataFrame({
+                    "Vértice": ["P1", "P3", "P2"],
+                    "Ângulo interno (graus)": [
+                        round(ang_P1, 4),
+                        round(ang_P3, 4),
+                        round(ang_P2, 4),
+                    ],
+                })
+
+                st.markdown("##### Distâncias dos lados")
+                st.dataframe(lados_df, use_container_width=True)
+
+                st.markdown("##### Ângulos internos (lei dos cossenos)")
+                st.dataframe(ang_df, use_container_width=True)
+
+                st.markdown(
+                    f"**Soma dos ângulos internos:** `{soma_ang:.4f}°` &nbsp;&nbsp; "
+                    f"(desvio em relação a 180°: `{desvio:+.4f}°`)"
+                )
+                st.markdown(f"**Área do triângulo (Heron):** `{area_:.4f} m²`")
 
 # -------------------- Rodapé -------------------------
 st.markdown(
