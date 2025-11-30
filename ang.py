@@ -1,5 +1,5 @@
 # app.py
-# Média das Direções (Hz) - UFPE
+# Média das Direções (Hz) + DH/DN - UFPE
 # Rode com: streamlit run app.py
 
 import streamlit as st
@@ -16,33 +16,33 @@ st.set_page_config(
     page_icon="📐"
 )
 
-# -------------------- Estilos customizados (cores UFPE) --------------------
+# -------------------- Estilos customizados (cores UFPE + degradês) --------------------
 CUSTOM_CSS = """
 <style>
-/* Fundo geral em tom claro com faixa bordô no topo */
-.stApp {
-    background: #f7f5f5;
+/* Fundo geral com leve degradê, independente do modo claro/escuro do navegador */
+body, .stApp {
+    background: radial-gradient(circle at top left, #faf5f5 0%, #f7f5f5 45%, #f4f4f4 100%);
     color: #111827;
     font-family: "Trebuchet MS", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* Container principal */
+/* Container principal em forma de cartão */
 .main-card {
-    background: #ffffff;
+    background: linear-gradient(145deg, #ffffff 0%, #fdfbfb 40%, #ffffff 100%);
     border-radius: 18px;
     padding: 1.8rem 2.1rem;
     border: 1px solid #e5e7eb;
     box-shadow:
-        0 14px 30px rgba(15, 23, 42, 0.25),
-        0 0 0 1px rgba(15, 23, 42, 0.04);
+        0 18px 40px rgba(15, 23, 42, 0.22),
+        0 0 0 1px rgba(15, 23, 42, 0.03);
 }
 
-/* Faixa superior bordô */
+/* Faixa superior bordô com leve brilho */
 .ufpe-top-bar {
     width: 100%;
     height: 8px;
-    border-radius: 0 0 12px 12px;
-    background: #990000;
+    border-radius: 0 0 14px 14px;
+    background: linear-gradient(90deg, #5b0000 0%, #990000 52%, #5b0000 100%);
     margin-bottom: 0.9rem;
 }
 
@@ -99,14 +99,14 @@ CUSTOM_CSS = """
     width: 7px;
     height: 7px;
     border-radius: 999px;
-    background: linear-gradient(135deg, #990000, #111827);
+    background: radial-gradient(circle at 30% 30%, #ffffff 0%, #990000 40%, #111827 100%);
 }
 
 /* Caixa de ajuda */
 .helper-box {
     border-radius: 12px;
     padding: 0.6rem 0.85rem;
-    background: #fdf2f2;
+    background: linear-gradient(135deg, #fdf2f2 0%, #fff5f5 40%, #fdf2f2 100%);
     border: 1px solid rgba(153, 0, 0, 0.25);
     font-size: 0.83rem;
     color: #4b5563;
@@ -123,20 +123,42 @@ CUSTOM_CSS = """
 .stDownloadButton > button {
     border-radius: 999px;
     border: 1px solid #990000;
-    background: #990000;
+    background: linear-gradient(135deg, #b00000, #730000);
     color: white;
     font-weight: 600;
     font-size: 0.86rem;
     padding: 0.45rem 0.95rem;
+    box-shadow: 0 8px 18px rgba(128,0,0,0.35);
 }
 .stDownloadButton > button:hover {
     border-color: #111827;
-    background: #111827;
+    background: linear-gradient(135deg, #111827, #4b0000);
 }
 
-/* Tabelas e editores */
+/* Tabelas e editores em cartões */
 [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+    background: linear-gradient(145deg, #ffffff 0%, #f9fafb 60%, #ffffff 100%) !important;
+    border-radius: 12px;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+}
+
+/* Cabeçalho das tabelas */
+[data-testid="stDataFrame"] thead tr {
+    background: linear-gradient(90deg, #f5e6e8 0%, #fdf2f2 100%) !important;
+    color: #5b101d !important;
+    font-weight: 600;
+}
+
+/* Linhas alternadas */
+[data-testid="stDataFrame"] tbody tr:nth-child(odd) {
+    background-color: #fafafa !important;
+}
+[data-testid="stDataFrame"] tbody tr:nth-child(even) {
     background-color: #ffffff !important;
+}
+[data-testid="stDataFrame"] tbody tr:hover {
+    background-color: #f3f0f0 !important;
 }
 
 /* Código da saída (se usado) */
@@ -151,6 +173,47 @@ CUSTOM_CSS = """
     font-size: 0.86rem;
     font-weight: 600;
     color: #374151;
+}
+
+/* Inputs com leve degradê e bordas suaves */
+.stTextInput input {
+    background: linear-gradient(145deg, #ffffff, #f9fafb) !important;
+    color: #111827 !important;
+    border-radius: 999px;
+    border: 1px solid #d4d4d4;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.9rem;
+}
+.stTextInput input:focus {
+    border-color: #a32a36 !important;
+    box-shadow: 0 0 0 1px rgba(163,42,54,0.25);
+}
+
+/* Botões "pill" com degradê */
+.stButton button {
+    background: linear-gradient(135deg, #a32a36, #7d1220) !important;
+    color: #ffffff !important;
+    border-radius: 999px !important;
+    border: none !important;
+    padding: 0.4rem 1.4rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    box-shadow: 0 6px 16px rgba(125,18,32,0.25);
+}
+.stButton button:hover {
+    background: linear-gradient(135deg, #7d1220, #5a0d18) !important;
+    box-shadow: 0 4px 12px rgba(90,13,24,0.35);
+}
+
+/* Expander header */
+.streamlit-expanderHeader {
+    font-weight: 600;
+    color: #7d1220 !important;
+}
+
+/* Alertas arredondados */
+.stAlert {
+    border-radius: 10px;
 }
 </style>
 """
@@ -204,8 +267,8 @@ with st.container():
             <span>Média das Direções (Hz) — Estação Total</span>
         </div>
         <div class="app-subtitle">
-            Cálculo da média das direções Hz a partir de leituras PD e PI, com validação
-            automática da planilha de campo.
+            Cálculo da média das direções Hz e das distâncias horizontais/níveis
+            a partir de leituras PD e PI, com validação automática da planilha de campo.
         </div>
         """,
         unsafe_allow_html=True,
@@ -214,10 +277,13 @@ with st.container():
     st.markdown(
         """
         <div class="helper-box">
-            <b>Entrada mínima:</b> colunas <code>EST</code>, <code>PV</code>, <code>Hz_PD</code> e <code>Hz_PI</code>.<br>
-            Os ângulos podem ser em <b>DMS</b> (ex.: 359°59'54") ou <b>decimal</b> (ex.: 359.9983).<br>
-            Em caso de dados faltando ou inválidos, o sistema indicará os problemas e
-            abrirá uma tabela para correção manual.
+            <b>Modelo esperado de planilha:</b><br>
+            Colunas: <code>EST</code>, <code>PV</code>,
+            <code>Hz_PD</code>, <code>Hz_PI</code>,
+            <code>Z_PD</code>, <code>Z_PI</code>,
+            <code>DI_PD</code>, <code>DI_PI</code>.<br>
+            Ângulos em <b>DMS</b> (ex.: 145°47'33") ou <b>decimal</b> (ex.: 145.7925).<br>
+            Distâncias inclinadas em <b>metros</b> (ex.: 25.365).
         </div>
         """,
         unsafe_allow_html=True,
@@ -228,39 +294,33 @@ with st.container():
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>1. Modelo de dados (mínimo para cálculo)</span>
+            <span>1. Modelo de dados (Hz, Z e DI)</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
     template_df = pd.DataFrame({
-        'EST': ['A', 'A'],
-        'PV': ['B', 'C'],
-        'Hz_PD': ["00°00'00\"", "18°58'22\""],
-        'Hz_PI': ["179°59'48\"", "198°58'14\""],
+        "EST": ["P1", "P1"],
+        "PV": ["P2", "P3"],
+        "Hz_PD": ["145°47'33\"", "167°29'03\""],
+        "Hz_PI": ["325°47'32\"", "347°29'22\""],
+        "Z_PD":  ["89°48'20\"", "89°36'31\""],
+        "Z_PI":  ["270°12'00\"", "270°23'32\""],
+        "DI_PD": [25.365, 26.285],
+        "DI_PI": [25.365, 26.285],
     })
 
     excel_bytes = io.BytesIO()
-    try:
-        template_df.to_excel(excel_bytes, index=False)
-        excel_bytes.seek(0)
-        st.download_button(
-            "📥 Baixar modelo Excel (.xlsx)",
-            data=excel_bytes.getvalue(),
-            file_name="modelo_media_direcoes_hz.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_excel_model"
-        )
-    except Exception:
-        csv_bytes = template_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Baixar modelo CSV",
-            data=csv_bytes,
-            file_name="modelo_media_direcoes_hz.csv",
-            mime="text/csv",
-            key="download_csv_model"
-        )
+    template_df.to_excel(excel_bytes, index=False)
+    excel_bytes.seek(0)
+    st.download_button(
+        "📥 Baixar modelo Excel (.xlsx)",
+        data=excel_bytes.getvalue(),
+        file_name="modelo_estacao_total_ufpe.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_excel_model"
+    )
 
 # -------------------- Upload de arquivo -------------------------
     st.markdown(
@@ -274,12 +334,12 @@ with st.container():
     )
 
     uploaded = st.file_uploader(
-        "Envie a planilha preenchida (Hz_PD / Hz_PI)",
+        "Envie a planilha preenchida (EST, PV, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI)",
         type=["xlsx", "xls", "csv"],
-        help="Se a planilha estiver incompleta, o sistema mostrará quais campos corrigir."
+        help="Use o modelo disponibilizado acima para evitar problemas de formatação."
     )
 
-# -------------------- Funções auxiliares --------------------------
+# -------------------- Funções auxiliares de ângulo --------------------------
 angle_re = re.compile(r"(-?\d+)[^\d\-]+(\d+)[^\d\-]+(\d+(?:[.,]\d+)?)")
 num_re = re.compile(r"^-?\d+(?:[.,]\d+)?$")
 
@@ -330,7 +390,6 @@ def parse_angle_to_decimal(x):
 def decimal_to_dms(angle):
     if pd.isna(angle):
         return ""
-    # normaliza para [0, 360)
     a = float(angle) % 360.0
     g = int(math.floor(a))
     m_f = (a - g) * 60.0
@@ -346,10 +405,7 @@ def decimal_to_dms(angle):
     return f"{g:02d}°{m:02d}'{s:02d}\""
 
 def mean_direction_deg(a_deg, b_deg):
-    """
-    Média de duas direções em graus, respeitando o círculo (0-360).
-    Usamos média vetorial (cos/sin) para tratar casos em torno de 0°/360°.
-    """
+    """Média vetorial de duas direções em graus."""
     if pd.isna(a_deg) or pd.isna(b_deg):
         return np.nan
     a_rad = math.radians(a_deg)
@@ -361,70 +417,99 @@ def mean_direction_deg(a_deg, b_deg):
     ang = math.degrees(math.atan2(y, x))
     return ang % 360.0
 
-# -------------------- Processamento / Validação ------------------------
-required_min_cols = ["EST", "PV", "Hz_PD", "Hz_PI"]
+# -------------------- Validação do DataFrame ------------------------
+required_cols = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 
-def validar_dataframe(df_original: pd.DataFrame):
-    """
-    Verifica colunas mínimas e valores de ângulo.
-    Retorna (df_corrigido, lista_erros, df_exemplo).
-    """
-    erros = []
-
+def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
+    """Permite alguns nomes próximos e normaliza para o padrão exigido."""
     df = df_original.copy()
-    # normaliza nomes possíveis para as mínimas
-    colmap = {c: c for c in df.columns}
-    for c in list(df.columns):
+    colmap = {}
+    for c in df.columns:
         low = c.strip().lower()
+
         if low in ["est", "estacao", "estação"]:
             colmap[c] = "EST"
-        if low in ["pv", "ponto visado", "ponto_visado", "ponto"]:
+        elif low in ["pv", "ponto visado", "ponto_visado", "ponto"]:
             colmap[c] = "PV"
-        if "hz" in low and "pd" in low:
+        elif "horizontal" in low and "pd" in low or ("hz" in low and "pd" in low):
             colmap[c] = "Hz_PD"
-        if "hz" in low and "pi" in low:
+        elif "horizontal" in low and "pi" in low or ("hz" in low and "pi" in low):
             colmap[c] = "Hz_PI"
+        elif "zenital" in low and "pd" in low or ("z" in low and "pd" in low):
+            colmap[c] = "Z_PD"
+        elif "zenital" in low and "pi" in low or ("z" in low and "pi" in low):
+            colmap[c] = "Z_PI"
+        elif "dist" in low and "pd" in low:
+            colmap[c] = "DI_PD"
+        elif "dist" in low and "pi" in low:
+            colmap[c] = "DI_PI"
+        else:
+            colmap[c] = c
 
     df = df.rename(columns=colmap)
+    return df
 
-    missing_cols = [c for c in required_min_cols if c not in df.columns]
-    if missing_cols:
+def validar_dataframe(df_original: pd.DataFrame):
+    erros = []
+
+    df = normalizar_colunas(df_original)
+
+    missing = [c for c in required_cols if c not in df.columns]
+    if missing:
         erros.append(
-            f"Colunas obrigatórias ausentes: {', '.join(missing_cols)}."
+            "Colunas obrigatórias ausentes: " + ", ".join(missing)
         )
 
-    # Garante colunas mínimas (mesmo que vazias) para permitir edição
-    for c in required_min_cols:
+    # Garante colunas (vazias) para edição, mesmo se faltarem
+    for c in required_cols:
         if c not in df.columns:
             df[c] = ""
 
-    # Validação de ângulos Hz_PD / Hz_PI
-    invalid_rows = []
+    # Checa ângulos
+    invalid_rows_hz = []
+    invalid_rows_z = []
     for idx, row in df.iterrows():
-        hz_pd_raw = row.get("Hz_PD", "")
-        hz_pi_raw = row.get("Hz_PI", "")
-        hz_pd_deg = parse_angle_to_decimal(hz_pd_raw)
-        hz_pi_deg = parse_angle_to_decimal(hz_pi_raw)
-        if pd.isna(hz_pd_deg) or pd.isna(hz_pi_deg):
-            invalid_rows.append(idx + 1)  # linha 1-based
-    if invalid_rows:
+        hz_pd = parse_angle_to_decimal(row.get("Hz_PD", ""))
+        hz_pi = parse_angle_to_decimal(row.get("Hz_PI", ""))
+        z_pd = parse_angle_to_decimal(row.get("Z_PD", ""))
+        z_pi = parse_angle_to_decimal(row.get("Z_PI", ""))
+        if pd.isna(hz_pd) or pd.isna(hz_pi):
+            invalid_rows_hz.append(idx + 1)
+        if pd.isna(z_pd) or pd.isna(z_pi):
+            invalid_rows_z.append(idx + 1)
+    if invalid_rows_hz:
         erros.append(
             "Valores inválidos ou vazios em Hz_PD / Hz_PI nas linhas: "
-            + ", ".join(map(str, invalid_rows))
-            + "."
+            + ", ".join(map(str, invalid_rows_hz)) + "."
+        )
+    if invalid_rows_z:
+        erros.append(
+            "Valores inválidos ou vazios em Z_PD / Z_PI nas linhas: "
+            + ", ".join(map(str, invalid_rows_z)) + "."
         )
 
-    # Exemplo didático para mostrar em caso de erro
-    exemplo_df = pd.DataFrame({
-        "EST": ["A", "A"],
-        "PV": ["B", "C"],
-        "Hz_PD": ["00°00'00\"", "18°59'34\""],
-        "Hz_PI": ["179°59'48\"", "198°59'24\""],
-    })
+    # Checa distâncias
+    invalid_rows_di = []
+    for idx, row in df.iterrows():
+        try:
+            di_pd = float(str(row.get("DI_PD", "")).replace(",", "."))
+            di_pi = float(str(row.get("DI_PI", "")).replace(",", "."))
+        except Exception:
+            invalid_rows_di.append(idx + 1)
+            continue
+        if pd.isna(di_pd) or pd.isna(di_pi):
+            invalid_rows_di.append(idx + 1)
+    if invalid_rows_di:
+        erros.append(
+            "Valores inválidos ou vazios em DI_PD / DI_PI nas linhas: "
+            + ", ".join(map(str, invalid_rows_di)) + "."
+        )
 
-    return df, erros, exemplo_df
+    return df, erros
 
-# -------------------- Execução principal ------------------------
+# -------------------- Processamento principal ------------------------
+df_uso = None
+
 if uploaded is not None:
     try:
         if uploaded.name.lower().endswith(".csv"):
@@ -434,129 +519,120 @@ if uploaded is not None:
 
         st.success(f"Arquivo '{uploaded.name}' carregado ({len(raw_df)} linhas).")
 
-        df_valid, erros, exemplo = validar_dataframe(raw_df)
+        df_valid, erros = validar_dataframe(raw_df)
+
+        st.subheader("Pré-visualização dos dados importados")
+        st.dataframe(df_valid[required_cols], use_container_width=True)
 
         if erros:
             st.error(
-                "Não foi possível calcular a média das direções (Hz) "
-                "devido aos seguintes problemas:"
+                "Não foi possível calcular diretamente devido aos seguintes problemas:"
             )
             for e in erros:
                 st.markdown(f"- {e}")
 
-            st.markdown("**Exemplo mínimo de preenchimento válido:**")
-            st.dataframe(exemplo, use_container_width=True)
-
             st.markdown(
-                "### Corrija/complete os dados abaixo e clique em *Aplicar* para recalcular"
+                "### Corrija os dados abaixo e clique em *Aplicar correções*"
             )
             edited_df = st.data_editor(
-                df_valid[required_min_cols],
+                df_valid[required_cols],
                 num_rows="dynamic",
                 use_container_width=True,
-                key="editor_corrigir_hz",
+                key="editor_corrigir_tudo",
             )
 
-            # Revalida após edição
-            df_valid2, erros2, _ = validar_dataframe(edited_df)
-            if not erros2:
-                df_em_uso = df_valid2
-                st.success("Dados corrigidos. Cálculo da média de Hz realizado abaixo.")
-            else:
-                st.warning(
-                    "Ainda há problemas nos dados após a edição. "
-                    "Revise os campos destacados na mensagem acima."
-                )
-                df_em_uso = None
+            if st.button("Aplicar correções"):
+                df_corrigido, erros2 = validar_dataframe(edited_df)
+                if not erros2:
+                    st.success("Dados corrigidos com sucesso.")
+                    df_uso = df_corrigido[required_cols].copy()
+                else:
+                    st.error("Ainda há problemas após a correção:")
+                    for e in erros2:
+                        st.markdown(f"- {e}")
         else:
-            df_em_uso = df_valid[required_min_cols].copy()
-
-        # Se temos um dataframe válido, prossegue com os cálculos
-        if df_em_uso is not None:
-            st.markdown(
-                """
-                <div class="section-title">
-                    <span class="dot"></span>
-                    <span>3. Cálculos e resultados</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            results = df_em_uso.copy()
-
-            # Converte Hz_PD / Hz_PI para graus decimais
-            results["Hz_PD_deg"] = results["Hz_PD"].apply(parse_angle_to_decimal)
-            results["Hz_PI_deg"] = results["Hz_PI"].apply(parse_angle_to_decimal)
-
-            # Média das direções usando média vetorial
-            results["Hz_med_deg"] = results.apply(
-                lambda r: mean_direction_deg(r["Hz_PD_deg"], r["Hz_PI_deg"]),
-                axis=1
-            )
-            results["Hz_med_DMS"] = results["Hz_med_deg"].apply(decimal_to_dms)
-
-            # ----------------- Tabela de resultados (resumo) -----------------
-            resumo_df = pd.DataFrame({
-                "EST": results["EST"],
-                "PV": results["PV"],
-                "Hz_PD": results["Hz_PD"],
-                "Hz_PI": results["Hz_PI"],
-                "Hz_médio (DMS)": results["Hz_med_DMS"].fillna(""),
-            })
-
-            st.dataframe(resumo_df, use_container_width=True)
-
-            # ----------------- Tabela de conferência -------------------------
-            display_df = pd.DataFrame({
-                "EST": results["EST"],
-                "PV": results["PV"],
-                "Ângulo Horizontal (PD)": results["Hz_PD"],
-                "Ângulo Horizontal (PI)": results["Hz_PI"],
-                "Hz Médio (DMS)": results["Hz_med_DMS"].fillna(""),
-            })
-
-            st.markdown(
-                """
-                <div class="section-title">
-                    <span class="dot"></span>
-                    <span>Tabela de conferência (valores angulares)</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.dataframe(display_df, use_container_width=True)
-
-            # ----------------- Download da saída -------------------------
-            out_df = results[["EST", "PV", "Hz_PD", "Hz_PI", "Hz_med_DMS"]].copy()
-            out_df.rename(
-                columns={
-                    "Hz_PD": "Hz_PD (entrada)",
-                    "Hz_PI": "Hz_PI (entrada)",
-                    "Hz_med_DMS": "Hz_médio (DMS)",
-                },
-                inplace=True
-            )
-            out_csv = out_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "📥 Baixar saída (CSV)",
-                data=out_csv,
-                file_name="saida_media_direcoes_hz.csv",
-                mime="text/csv",
-                key="download_saida_csv"
-            )
+            df_uso = df_valid[required_cols].copy()
 
     except Exception as e:
         st.error(f"Erro ao ler o arquivo: {e}")
+
+# -------------------- Cálculos Hz, DH, DN ------------------------
+if df_uso is not None:
+    st.markdown(
+        """
+        <div class="section-title">
+            <span class="dot"></span>
+            <span>3. Cálculos e resultados</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    res = df_uso.copy()
+
+    # Converte ângulos para graus decimais
+    for col in ["Hz_PD", "Hz_PI", "Z_PD", "Z_PI"]:
+        res[col + "_deg"] = res[col].apply(parse_angle_to_decimal)
+
+    # Hz médio (média vetorial)
+    res["Hz_med_deg"] = res.apply(
+        lambda r: mean_direction_deg(r["Hz_PD_deg"], r["Hz_PI_deg"]),
+        axis=1
+    )
+    res["Hz_med_DMS"] = res["Hz_med_deg"].apply(decimal_to_dms)
+
+    # Distâncias inclinadas
+    res["DI_PD_m"] = res["DI_PD"].apply(lambda x: float(str(x).replace(",", ".")))
+    res["DI_PI_m"] = res["DI_PI"].apply(lambda x: float(str(x).replace(",", ".")))
+
+    # Z -> radianos (zenital)
+    z_pd_rad = res["Z_PD_deg"] * np.pi / 180.0
+    z_pi_rad = res["Z_PI_deg"] * np.pi / 180.0
+
+    # Distância horizontal e diferença de nível
+    res["DH_PD_m"] = (res["DI_PD_m"] * np.sin(z_pd_rad)).round(3)
+    res["DN_PD_m"] = (res["DI_PD_m"] * np.cos(z_pd_rad)).round(3)
+    res["DH_PI_m"] = (res["DI_PI_m"] * np.sin(z_pi_rad)).round(3)
+    res["DN_PI_m"] = (res["DI_PI_m"] * np.cos(z_pi_rad)).round(3)
+
+    res["DH_med_m"] = ((res["DH_PD_m"] + res["DH_PI_m"]) / 2.0).round(3)
+    res["DN_med_m"] = ((res["DN_PD_m"] + res["DN_PI_m"]) / 2.0).round(3)
+
+    # ----------------- Tabela resumo (Hz e distâncias) -----------------
+    resumo_df = pd.DataFrame({
+        "EST": res["EST"],
+        "PV": res["PV"],
+        "Hz_PD": res["Hz_PD"],
+        "Hz_PI": res["Hz_PI"],
+        "Hz_médio (DMS)": res["Hz_med_DMS"].fillna(""),
+        "DH_PD (m)": res["DH_PD_m"],
+        "DH_PI (m)": res["DH_PI_m"],
+        "DH_médio (m)": res["DH_med_m"],
+        "DN_PD (m)": res["DN_PD_m"],
+        "DN_PI (m)": res["DN_PI_m"],
+        "DN_médio (m)": res["DN_med_m"],
+    })
+
+    st.dataframe(resumo_df, use_container_width=True)
+
+    # ----------------- Download da saída -------------------------
+    out_df = resumo_df.copy()
+    out_csv = out_df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "📥 Baixar resultados (CSV)",
+        data=out_csv,
+        file_name="resultados_estacao_total_ufpe.csv",
+        mime="text/csv",
+        key="download_saida_csv"
+    )
 
 # -------------------- Rodapé -------------------------
 st.markdown(
     """
     <p class="footer-text">
-        Observação: para gerar/baixar o modelo Excel (.xlsx) no servidor,
-        certifique-se de incluir <code>openpyxl</code> no <code>requirements.txt</code>.<br>
-        Versão do app: <code>2.0 — Média Hz (cores UFPE, validação de planilha)</code>.
+        Versão do app: <code>3.0 — Hz + DH/DN (modelo UFPE, degradês e validação completa)</code>.<br>
+        Para gerar/baixar o modelo Excel (.xlsx) no servidor,
+        certifique-se de incluir <code>openpyxl</code> no <code>requirements.txt</code>.
     </p>
     """,
     unsafe_allow_html=True,
