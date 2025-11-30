@@ -23,7 +23,8 @@ REQUIRED_COLS = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"
 
 def parse_angle_to_decimal(value: str) -> float:
     """
-    Converte string de ângulo em DMS (145°47'33") ou decimal ("145.7925") para graus decimais.
+    Converte string de ângulo em DMS (145°47′33″, 145°47'33", 145 47 33)
+    ou decimal ("145.7925") para graus decimais.
     Retorna NaN se não conseguir converter.
     """
     if value is None:
@@ -32,27 +33,38 @@ def parse_angle_to_decimal(value: str) -> float:
     if s == "":
         return float("nan")
 
-    # Tenta decimal simples
+    # Tenta decimal simples (número puro com ponto ou vírgula)
     try:
-        return float(s.replace(",", "."))
+        # se não tiver nenhum caractere não numérico típico de DMS, considera decimal
+        if all(ch.isdigit() or ch in ".,-+" for ch in s):
+            return float(s.replace(",", "."))
     except Exception:
         pass
 
-    # Tenta DMS
+    # Normaliza símbolos DMS para espaços
+    # inclui variações unicode: ’ ´ ′ ″
+    for ch in ["°", "'", "’", "´", "′", '"', "″"]:
+        s = s.replace(ch, " ")
+
+    # Troca vírgula por ponto e quebra em partes
+    s = s.replace(",", ".")
+    parts = s.split()
+    parts = [p for p in parts if p != ""]
+    if len(parts) == 0:
+        return float("nan")
+
     try:
-        s = s.replace("°", " ").replace("'", " ").replace('"', " ")
-        parts = s.split()
-        parts = [p for p in parts if p != ""]
-        if len(parts) == 0:
-            return float("nan")
-        deg = float(parts[0].replace(",", "."))
-        minutes = float(parts[1].replace(",", ".")) if len(parts) > 1 else 0.0
-        seconds = float(parts[2].replace(",", ".")) if len(parts) > 2 else 0.0
-        sign = 1.0
-        if deg < 0:
-            sign = -1.0
-            deg = abs(deg)
-        return sign * (deg + minutes / 60.0 + seconds / 3600.0)
+        deg = float(parts[0])
+        minutes = float(parts[1]) if len(parts) > 1 else 0.0
+        seconds = float(parts[2]) if len(parts) > 2 else 0.0
+    except Exception:
+        return float("nan")
+
+    sign = 1.0
+    if deg < 0:
+        sign = -1.0
+        deg = abs(deg)
+    return sign * (deg + minutes / 60.0 + seconds / 3600.0)
     except Exception:
         return float("nan")
 
