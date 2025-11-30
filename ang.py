@@ -11,94 +11,133 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------
-# CSS - layout, cores e contraste
+# CSS - estilo mais orgânico / suave
 # ------------------------------------------------------------
 st.markdown(
     """
     <style>
-    /* Fundo geral independente do tema claro/escuro do navegador */
+    /* Fundo geral bem claro, mais "orgânico" */
     body, .stApp {
-        background-color: #F8F8F8 !important;
-        color: #111111 !important;
+        background: linear-gradient(135deg, #f7f7f7 0%, #fdfdfd 40%, #f5f5f5 100%) !important;
+        color: #1a1a1a !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     .main {
-        padding-top: 1rem;
+        padding-top: 0.5rem;
     }
 
-    /* Cabeçalho UFPE */
+    /* Cabeçalho UFPE com leve sombra e cantos arredondados */
     .cabecalho-ufpe {
-        border: 1px solid #B00020;
-        border-radius: 6px;
-        padding: 0.75rem 1rem;
-        background-color: #FFFFFF;
-        color: #111111;
+        border-radius: 12px;
+        padding: 1rem 1.4rem;
+        background: #ffffffdd;
+        backdrop-filter: blur(3px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.04);
     }
 
-    .cabecalho-ufpe h1,
-    .cabecalho-ufpe h2,
+    .cabecalho-ufpe h2 {
+        margin: 0 0 0.25rem 0;
+        padding: 0;
+        color: #7d1220; /* bordô UFPE mais suave */
+        font-size: 1.4rem;
+        letter-spacing: 0.02em;
+    }
+
     .cabecalho-ufpe h3 {
         margin: 0;
         padding: 0;
-        color: #8B0014;  /* Bordô UFPE */
+        color: #a32a36;
+        font-size: 1rem;
+        font-weight: 600;
     }
 
     .cabecalho-ufpe small {
-        color: #333333;
+        display: block;
+        margin-top: 0.4rem;
+        color: #444444;
+        font-size: 0.85rem;
     }
 
-    /* Campos de entrada */
+    /* Expander mais suave */
+    .streamlit-expanderHeader {
+        font-weight: 600;
+        color: #7d1220 !important;
+    }
+
+    /* Labels */
     .stTextInput > label,
     .stNumberInput > label,
     .stDateInput > label,
     .stFileUploader > label {
-        color: #111111 !important;
+        color: #2d2d2d !important;
         font-weight: 500;
+        font-size: 0.9rem;
     }
 
+    /* Inputs com bordas arredondadas */
     .stTextInput input,
     .stNumberInput input {
-        background-color: #FFFFFF !important;
-        color: #111111 !important;
-        border: 1px solid #CCCCCC;
+        background-color: #ffffff !important;
+        color: #1a1a1a !important;
+        border-radius: 999px;
+        border: 1px solid #d4d4d4;
+        padding: 0.35rem 0.8rem;
+        font-size: 0.9rem;
     }
 
-    /* Botões */
+    .stTextInput input:focus,
+    .stNumberInput input:focus {
+        border-color: #a32a36 !important;
+        box-shadow: 0 0 0 1px rgba(163,42,54,0.25);
+    }
+
+    /* Botões com estilo "pill" */
     .stButton button {
-        background-color: #8B0014 !important;
-        color: #FFFFFF !important;
-        border-radius: 4px;
-        border: 1px solid #5e000e !important;
+        background: linear-gradient(135deg, #a32a36, #7d1220) !important;
+        color: #ffffff !important;
+        border-radius: 999px;
+        border: none !important;
+        padding: 0.4rem 1.4rem;
+        font-weight: 600;
+        font-size: 0.9rem;
+        box-shadow: 0 6px 16px rgba(125,18,32,0.25);
     }
     .stButton button:hover {
-        background-color: #5e000e !important;
+        background: linear-gradient(135deg, #7d1220, #5a0d18) !important;
+        box-shadow: 0 4px 12px rgba(90,13,24,0.35);
     }
 
-    /* DataFrames */
+    /* DataFrames em "cartão" */
     .stDataFrame, .stDataEditor {
-        background-color: #FFFFFF !important;
-        border-radius: 4px;
-        border: 1px solid #DDDDDD;
+        background-color: #ffffff !important;
+        border-radius: 10px;
+        border: 1px solid #e5e5e5;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+        padding: 0.2rem 0.4rem;
     }
 
     .stDataFrame table thead tr {
-        background-color: #8B0014 !important;
-        color: #FFFFFF !important;
+        background-color: #f5e6e8 !important;
+        color: #5b101d !important;
+        font-weight: 600;
     }
 
     .stDataFrame table tbody tr:nth-child(odd) {
-        background-color: #FAFAFA !important;
+        background-color: #fafafa !important;
     }
-
     .stDataFrame table tbody tr:nth-child(even) {
-        background-color: #FFFFFF !important;
+        background-color: #ffffff !important;
     }
 
-    /* Mensagens */
+    .stDataFrame table tbody tr:hover {
+        background-color: #f3f0f0 !important;
+    }
+
+    /* Alertas mais arredondados */
     .stAlert {
-        border-radius: 4px;
+        border-radius: 10px;
     }
-
     </style>
     """,
     unsafe_allow_html=True
@@ -120,7 +159,7 @@ def dms_to_decimal(dms_str: str) -> float:
     if s == "":
         return np.nan
 
-    # Formato "g m s" (apenas espaços, sem ° ' ")
+    # Formato "g m s"
     if " " in s and all(ch not in s for ch in ["°", "º", "'", "’", '"']):
         try:
             g, m, sec = s.split()
@@ -147,7 +186,6 @@ def dms_to_decimal(dms_str: str) -> float:
             g = float(parts[0])
             resto = parts[1]
         else:
-            # já está em graus decimais
             return float(s)
 
         if "'" in resto:
@@ -174,12 +212,6 @@ def calcula_resultados(df: pd.DataFrame) -> pd.DataFrame:
     """
     Recebe DataFrame com colunas obrigatórias:
     EST, PV, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI
-
-    Retorna DataFrame com:
-    EST, PV,
-    Hz_PD (graus), Hz_PI (graus), Hz_médio (graus),
-    DH_PD (m), DH_PI (m), DH_médio (m),
-    DN_PD (m), DN_PI (m), DN_médio (m)
     """
     df_calc = df.copy()
 
@@ -187,31 +219,27 @@ def calcula_resultados(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["Hz_PD", "Hz_PI", "Z_PD", "Z_PI"]:
         df_calc[col + "_dec"] = df_calc[col].apply(dms_to_decimal)
 
-    # Converte distâncias para float
+    # Converte distâncias
     for col in ["DI_PD", "DI_PI"]:
         df_calc[col] = pd.to_numeric(df_calc[col], errors="coerce")
 
-    # Média de direção (em graus decimais)
+    # Hz médio (graus)
     df_calc["Hz_medio"] = (df_calc["Hz_PD_dec"] + df_calc["Hz_PI_dec"]) / 2.0
 
-    # Distâncias horizontal (DH) e diferença de nível (DN)
-    # assumindo Z = ângulo zenital
+    # Distâncias horizontal e diferença de nível
     for lado in ["PD", "PI"]:
         z_dec = df_calc[f"Z_{lado}_dec"] * np.pi / 180.0
         di = df_calc[f"DI_{lado}"]
+        df_calc[f"DH_{lado}"] = di * np.sin(z_dec)
+        df_calc[f"DN_{lado}"] = di * np.cos(z_dec)
 
-        df_calc[f"DH_{lado}"] = di * np.sin(z_dec)   # distância horizontal
-        df_calc[f"DN_{lado}"] = di * np.cos(z_dec)   # diferença de nível
-
-    # Médias
     df_calc["DH_medio"] = (df_calc["DH_PD"] + df_calc["DH_PI"]) / 2.0
     df_calc["DN_medio"] = (df_calc["DN_PD"] + df_calc["DN_PI"]) / 2.0
 
-    # Arredonda distâncias (m) para 3 casas decimais
+    # Arredonda distâncias
     for col in ["DH_PD", "DH_PI", "DH_medio", "DN_PD", "DN_PI", "DN_medio"]:
         df_calc[col] = df_calc[col].round(3)
 
-    # Monta resultado final
     resultado = df_calc[[
         "EST", "PV",
         "Hz_PD_dec", "Hz_PI_dec", "Hz_medio",
@@ -240,7 +268,7 @@ def main():
     col_logo, col_titulo = st.columns([1, 4])
 
     with col_logo:
-        # Se tiver o arquivo de imagem do brasão, descomente e ajuste o nome:
+        # Se tiver o brasão em imagem, descomente:
         # st.image("brasao_ufpe.png", use_column_width=True)
         st.write("")
 
@@ -249,17 +277,16 @@ def main():
             """
             <div class="cabecalho-ufpe">
                 <h2>Universidade Federal de Pernambuco - UFPE</h2>
-                <h3>Centro de Tecnologia e Geociências (CTG)</h3>
-                <h3>Curso de Engenharia Cartográfica e de Agrimensura</h3>
-                <small>Aplicação para Cálculo de Direções Horizontais e Distâncias</small>
+                <h3>Centro de Tecnologia e Geociências · Engenharia Cartográfica e de Agrimensura</h3>
+                <small>Aplicação para Cálculo de Direções Horizontais e Distâncias com Estação Total</small>
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    st.write("")  # espaçamento
+    st.write("")
 
-    # ----------------- Campos de identificação ---------------
+    # ----------------- Informações da campanha ---------------
     with st.expander("Informações da campanha", expanded=True):
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1:
@@ -284,18 +311,15 @@ def main():
 
         - `EST`
         - `PV`
-        - `Hz_PD`  – Ângulo Horizontal PD
-        - `Hz_PI`  – Ângulo Horizontal PI
-        - `Z_PD`   – Ângulo Zenital PD
-        - `Z_PI`   – Ângulo Zenital PI
-        - `DI_PD`  – Distância Inclinada PD (m)
-        - `DI_PI`  – Distância Inclinada PI (m)
+        - `Hz_PD`  – Ângulo Horizontal PD  
+        - `Hz_PI`  – Ângulo Horizontal PI  
+        - `Z_PD`   – Ângulo Zenital PD  
+        - `Z_PI`   – Ângulo Zenital PI  
+        - `DI_PD`  – Distância Inclinada PD (m)  
+        - `DI_PI`  – Distância Inclinada PI (m)  
 
-        Os ângulos podem estar em formato `g°m′s″` (por exemplo: `145°47'33"`)
-        ou `g m s` (ex.: `145 47 33`).
-
-        As distâncias devem estar em metros (m), com ponto decimal
-        (por exemplo: `25.365`).
+        Ângulos em formato `g°m′s″` (ex.: `145°47'33"`) ou `g m s` (ex.: `145 47 33`).  
+        Distâncias em metros, com ponto decimal (ex.: `25.365`).
         """,
         unsafe_allow_html=False,
     )
@@ -312,10 +336,9 @@ def main():
             st.error(f"Erro ao ler o arquivo: {e}")
             return
 
-        st.subheader("2. Tabela de conferência dos dados importados")
+        st.subheader("2. Conferência dos dados importados")
         st.dataframe(df, use_container_width=True)
 
-        # ------------- Validação de colunas -------------------
         colunas_obrigatorias = [
             "EST", "PV",
             "Hz_PD", "Hz_PI",
@@ -333,12 +356,10 @@ def main():
             )
             return
 
-        # Checar dados vazios nas colunas críticas
         if df[colunas_obrigatorias].isna().any().any():
             st.warning(
-                "Foram encontrados valores vazios em algumas das colunas "
-                "obrigatórias. Essas linhas poderão gerar resultados vazios "
-                "nos cálculos."
+                "Existem valores vazios em colunas obrigatórias. "
+                "Essas linhas podem gerar resultados vazios nos cálculos."
             )
 
         st.write("")
@@ -354,7 +375,6 @@ def main():
             st.success("Cálculos concluídos com sucesso.")
             st.dataframe(df_result, use_container_width=True)
 
-            # Opção de download dos resultados
             csv = df_result.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
                 label="Baixar resultados em CSV",
@@ -362,7 +382,6 @@ def main():
                 file_name="resultados_direcoes_distancias.csv",
                 mime="text/csv",
             )
-
     else:
         st.info("Faça o upload da planilha para visualizar e calcular os resultados.")
 
