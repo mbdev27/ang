@@ -65,8 +65,6 @@ def parse_angle_to_decimal(value: str) -> float:
         sign = -1.0
         deg = abs(deg)
     return sign * (deg + minutes / 60.0 + seconds / 3600.0)
-    except Exception:
-        return float("nan")
 
 
 def decimal_to_dms(angle_deg: float) -> str:
