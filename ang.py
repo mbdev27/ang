@@ -1,5 +1,6 @@
 # app.py
 # UFPE - Calculadora de Ângulos e Distâncias (Método das Direções)
+# Cabeçalho no estilo da folha enviada; download final em XLSX com figura em JPG.
 
 import io
 import math
@@ -491,16 +492,12 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
         b**2 + c**2 - 2 * b * c * math.cos(math.radians(alpha_deg))
     )
 
-    # Ângulos:
     # a = PV1–PV2 (P3–P1)
     # b = EST–PV1 (P2–P3)
     # c = EST–PV2 (P2–P1)
-    # Em P1 (PV2) -> oposto a b
-    # Em P2 (EST) -> oposto a a
-    # Em P3 (PV1) -> oposto a c
-    ang_P1 = _angulo_interno(b, c, a)
-    ang_P2 = _angulo_interno(a, b, c)
-    ang_P3 = _angulo_interno(c, a, b)
+    ang_P1 = _angulo_interno(b, c, a)  # vértice em P1 (PV2) – oposto a b
+    ang_P2 = _angulo_interno(a, b, c)  # vértice em P2 (EST) – oposto a a
+    ang_P3 = _angulo_interno(c, a, b)  # vértice em P3 (PV1) – oposto a c
 
     s = (a + b + c) / 2.0
     area = math.sqrt(max(s * (s - a) * (s - b) * (s - c), 0.0))
@@ -558,7 +555,7 @@ def selecionar_linhas_por_estacao_e_conjunto(
     return int(idxs[0]), int(idxs[1])
 
 # =====================================================================
-#  Plotagem do triângulo
+#  Plotagem do triângulo (retorna figura e buffer)
 # =====================================================================
 
 def plotar_triangulo_info(info):
@@ -584,26 +581,35 @@ def plotar_triangulo_info(info):
     ys = [y_est, y_pv1, y_pv2, y_est]
 
     fig, ax = plt.subplots()
-    ax.plot(xs, ys, "-o", color="#7f0000")
+    ax.plot(xs, ys, "-o", color="#ffffff")
+    ax.set_facecolor("#7f0000")
+    fig.patch.set_facecolor("#7f0000")
     ax.set_aspect("equal", "box")
 
-    ax.text(x_est, y_est, f" {est}", fontsize=10, color="#111827")
-    ax.text(x_pv1, y_pv1, f" {pv1}", fontsize=10, color="#111827")
-    ax.text(x_pv2, y_pv2, f" {pv2}", fontsize=10, color="#111827")
+    ax.text(x_est, y_est, f" {est}", fontsize=10, color="#ffffff")
+    ax.text(x_pv1, y_pv1, f" {pv1}", fontsize=10, color="#ffffff")
+    ax.text(x_pv2, y_pv2, f" {pv2}", fontsize=10, color="#ffffff")
 
     ax.text((x_est + x_pv1) / 2, (y_est + y_pv1) / 2,
-            f"{b:.3f} m", color="#374151", fontsize=9)
+            f"{b:.3f} m", color="#ffe4e4", fontsize=9)
     ax.text((x_est + x_pv2) / 2, (y_est + y_pv2) / 2,
-            f"{c:.3f} m", color="#374151", fontsize=9)
+            f"{c:.3f} m", color="#ffe4e4", fontsize=9)
     ax.text((x_pv1 + x_pv2) / 2, (y_pv1 + y_pv2) / 2,
-            f"{a:.3f} m", color="#374151", fontsize=9)
+            f"{a:.3f} m", color="#ffe4e4", fontsize=9)
 
-    ax.set_xlabel("X (m)")
-    ax.set_ylabel("Y (m)")
-    ax.grid(True, linestyle="--", alpha=0.3)
-    ax.set_title("Representação do triângulo em planta")
+    ax.set_xlabel("X (m)", color="#ffe4e4")
+    ax.set_ylabel("Y (m)", color="#ffe4e4")
+    ax.tick_params(colors="#ffe4e4")
+    ax.grid(True, linestyle="--", alpha=0.3, color="#fca5a5")
+    ax.set_title("Representação do triângulo em planta", color="#ffe4e4")
 
     st.pyplot(fig)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="jpg", dpi=200, bbox_inches="tight")
+    buf.seek(0)
+    plt.close(fig)
+    return buf
 
 # =====================================================================
 #  CSS / Layout
@@ -612,81 +618,47 @@ def plotar_triangulo_info(info):
 CUSTOM_CSS = """
 <style>
 body, .stApp {
-  background: radial-gradient(circle at top left,#fcecea 0%,#f9f1f1 28%,#f4f4f4 55%,#eceff1 100%);
-  color:#111827;
+  background: radial-gradient(circle at top left,#520000 0%,#8b0000 40%,#1f1f1f 100%);
+  color:#ffffff;
   font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
 }
 
-/* texto do corpo em preto e justificado */
-p, li, div, span {
-  color:#111827;
-}
-p {
-  text-align: justify;
-}
-
-/* Card principal */
+/* texto do corpo em preto num cartão branco */
 .main-card{
-  background:linear-gradient(145deg,rgba(255,255,255,0.98) 0%,#fdf7f7 40%,#ffffff 100%);
+  background:#ffffff;
+  color:#111827;
   border-radius:22px;
-  padding:1.6rem 2.1rem 1.4rem 2.1rem;
-  border:1px solid rgba(148,27,37,0.20);
-  box-shadow:0 22px 46px rgba(15,23,42,0.23),0 0 0 1px rgba(15,23,42,0.04);
+  padding:1.4rem 2.0rem 1.4rem 2.0rem;
+  border:1px solid rgba(148,27,37,0.40);
+  box-shadow:0 22px 46px rgba(15,23,42,0.30);
   max-width:1320px;
   margin:1.2rem auto 2.0rem auto;
 }
+.main-card p { text-align: justify; }
 
-/* Cabeçalho expansivo com logo */
+/* Cabeçalho vermelho interno ao card */
 .ufpe-header-band{
   width:100%;
-  padding:0.4rem 0.9rem;
-  border-radius:18px;
-  background:linear-gradient(90deg,#4b0000 0%,#7e0000 35%,#b30000 70%,#4b0000 100%);
+  padding:0.7rem 1.0rem 0.6rem 1.0rem;
+  border-radius:14px;
+  background:linear-gradient(90deg,#4b0000 0%,#7e0000 40%,#b30000 75%,#4b0000 100%);
   color:#f9fafb;
-  margin-bottom:0.4rem;
   display:flex;
-  align-items:center;
-  gap:0.7rem;
+  align-items:flex-start;
+  gap:0.8rem;
 }
-.ufpe-header-text h1{
-  font-size:1.1rem;
-  letter-spacing:0.12em;
-  text-transform:uppercase;
-  margin:0 0 0.1rem 0;
+.ufpe-header-text{
+  font-size:0.87rem;
 }
-.ufpe-header-text h2{
-  font-size:0.90rem;
-  margin:0;
-}
-.ufpe-header-text h3{
-  font-size:0.85rem;
-  margin:0.08rem 0 0 0;
-}
-
-/* Linha com curso / disciplina (também cabeçalho) */
-.ufpe-header-subline{
-  font-size:0.80rem;
-  margin-top:0.2rem;
-  display:flex;
-  justify-content:space-between;
-  gap:1.2rem;
-  color:#111827;
-}
-
-/* Caixa dos campos preenchíveis */
-.ufpe-form-box{
-  margin-top:0.5rem;
-  padding:0.4rem 0.9rem 0.2rem 0.9rem;
-  background:#fff;
-  border-radius:16px;
-  border:1px solid rgba(148,27,37,0.25);
-}
-
-/* Títulos de seção */
-.section-title{
-  font-size:1.05rem;
+.ufpe-header-text b{
   font-weight:700;
-  margin-top:1.7rem;
+}
+
+/* Seções */
+.section-title{
+  font-size:1.00rem;
+  font-weight:700;
+  margin-top:1.5rem;
   margin-bottom:0.6rem;
   display:flex;
   align-items:center;
@@ -704,33 +676,33 @@ p {
 
 /* Quadros auxiliares */
 .helper-box{
-  border-radius:14px;
-  padding:0.7rem 0.9rem;
-  background:linear-gradient(135deg,#fff5f5 0%,#ffe7e7 40%,#fffafa 100%);
-  border:1px solid rgba(148,27,37,0.38);
-  font-size:0.85rem;
+  border-radius:10px;
+  padding:0.6rem 0.8rem;
+  background:#fff5f5;
+  border:1px solid rgba(148,27,37,0.35);
+  font-size:0.86rem;
   color:#111827;
-  margin-bottom:0.8rem;
+  margin-bottom:0.5rem;
 }
 
-/* Estilo das tabelas */
+/* Tabelas */
 [data-testid="stDataFrame"],[data-testid="stDataEditor"]{
-  background:linear-gradient(145deg,#ffffff 0%,#f9fafb 50%,#fffdfd 100%) !important;
-  border-radius:14px;
-  border:1px solid rgba(148,27,37,0.22);
-  box-shadow:0 14px 28px rgba(15,23,42,0.10);
+  background:#ffffff !important;
+  border-radius:10px;
+  border:1px solid rgba(148,27,37,0.25);
+  box-shadow:0 10px 22px rgba(15,23,42,0.15);
 }
 
 /* Botões em vermelho/branco, texto preto */
-.stButton>button {
+.stButton>button, .stDownloadButton>button {
   background: #b30000;
   color: #111827;
   border-radius: 999px;
   border: 1px solid #7f0000;
-  padding: 0.4rem 1.1rem;
+  padding: 0.35rem 1.1rem;
   font-weight: 600;
 }
-.stButton>button:hover {
+.stButton>button:hover, .stDownloadButton>button:hover {
   background: #ffffff;
   color: #111827;
   border: 1px solid #b30000;
@@ -754,9 +726,8 @@ def cabecalho_ufpe():
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-        # Faixa com logo + textos do cabeçalho
         st.markdown("<div class='ufpe-header-band'>", unsafe_allow_html=True)
-        col_logo, col_text = st.columns([1, 8])
+        col_logo, col_text = st.columns([1, 9])
         with col_logo:
             st.image(
                 "https://upload.wikimedia.org/wikipedia/commons/8/85/Bras%C3%A3o_da_UFPE.png",
@@ -766,63 +737,44 @@ def cabecalho_ufpe():
             st.markdown(
                 """
                 <div class="ufpe-header-text">
-                    <h1>UNIVERSIDADE FEDERAL DE PERNAMBUCO</h1>
-                    <h2>DECART — Departamento de Engenharia Cartográfica</h2>
-                    <h3>LATOP — Laboratório de Topografia</h3>
+                    <b>UNIVERSIDADE FEDERAL DE PERNAMBUCO - UFPE</b><br>
+                    DECART — Departamento de Engenharia Cartográfica<br>
+                    LATOP — Laboratório de Topografia<br>
+                    Curso: Engenharia Cartográfica e Agrimensura<br>
+                    Disciplina: Equipamentos de Medição<br>
+                    Professor(a): _________________________________<br>
+                    Equipamento: ________________________________<br>
+                    Data: ________________________________________<br>
+                    Local: _______________________________________<br>
+                    Patrimônio: _________________________________
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Curso e disciplina (também parte do cabeçalho)
         st.markdown(
             """
-            <div class="ufpe-header-subline">
-                <div><b>Curso:</b> Engenharia Cartográfica e Agrimensura</div>
-                <div><b>Disciplina:</b> Equipamentos de Medição</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # Caixa com campos preenchíveis
-        st.markdown('<div class="ufpe-form-box">', unsafe_allow_html=True)
-        c1, c2, c3 = st.columns([2.3, 2.3, 1.6])
-        with c1:
-            st.text_input("PROFESSOR(A):", value="")
-            st.text_input("LOCAL:", value="")
-        with c2:
-            st.text_input("EQUIPAMENTO:", value="")
-            st.text_input("PATRIMÔNIO:", value="")
-        with c3:
-            st.date_input("DATA:", format="DD/MM/YYYY")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-        # Título do app
-        st.markdown(
-            """
-            <div style="margin-top:0.8rem;">
-                <span style="font-size:1.9rem;font-weight:800;color:#7f0000;letter-spacing:0.04em;">
-                    CALCULADORA DE ÂNGULOS E DISTÂNCIAS
-                </span>
-                <p style="font-size:0.95rem;margin-top:0.2rem;">
-                    Método das Direções – médias de Hz, medição angular vertical/zenital
-                    e representação em planta do triângulo formado pelos pontos P1, P2 e P3.
-                </p>
-            </div>
+            <p style="margin-top:0.9rem;font-size:1.5rem;font-weight:800;color:#7f0000;">
+                Calculadora de Ângulos e Distâncias – Método das Direções
+            </p>
+            <p style="font-size:0.92rem;">
+                Esta ferramenta auxilia no processamento das leituras obtidas com estação total,
+                calculando médias de direções horizontais (Hz), ângulos verticais/zenitais, distâncias
+                horizontais médias e a geometria do triângulo formado pelos pontos P1, P2 e P3.
+            </p>
             """,
             unsafe_allow_html=True,
         )
 
         st.markdown(
             """
-            <div class="helper-box" style="margin-top:0.6rem;">
-                <b>Modelo esperado de planilha:</b><br>
-                Colunas: <code>EST</code>, <code>PV</code>, <code>SEQ</code>,
-                <code>Hz_PD</code>, <code>Hz_PI</code>,
-                <code>Z_PD</code>, <code>Z_PI</code>,
-                <code>DI_PD</code>, <code>DI_PI</code>.
+            <div class="helper-box">
+                <b>Preenchimento dos dados de identificação:</b><br>
+                Recomenda-se que informações como professor(a), equipamento, data,
+                local e patrimônio sejam preenchidas diretamente no modelo de planilha.
+                Caso algum campo venha em branco, ele poderá ser completado manualmente
+                no próprio arquivo exportado.
             </div>
             """,
             unsafe_allow_html=True,
@@ -1022,6 +974,8 @@ def secao_calculos(df_uso: pd.DataFrame):
     )
 
     info = None
+    img_buf = None
+
     if st.button("Gerar triângulo"):
         pares = selecionar_linhas_por_estacao_e_conjunto(res, estacao_op, conjunto_op)
         if pares is None:
@@ -1064,7 +1018,6 @@ def secao_calculos(df_uso: pd.DataFrame):
                         f"**Área do triângulo:** `{info['area_m2']:.3f}` m²"
                     )
 
-                    # Quadro explicando o cálculo geométrico
                     st.markdown(
                         """
                         <div class="helper-box" style="margin-top:0.7rem;">
@@ -1097,86 +1050,77 @@ def secao_calculos(df_uso: pd.DataFrame):
                     )
 
                 with col2:
-                    plotar_triangulo_info(info)
+                    img_buf = plotar_triangulo_info(info)
 
-    return info
+    return info, img_buf
 
 # =====================================================================
-#  Exportação em HTML (para PDF externo) e rodapé
+#  Exportação em XLSX com figura JPG e rodapé
 # =====================================================================
 
-def gerar_html_para_download(info_triangulo):
-    if info_triangulo is None:
-        tri_block = "<p>Nenhum triângulo foi gerado nesta execução.</p>"
-    else:
-        tri_block = f"""
-        <h2>Resumo do triângulo</h2>
-        <ul>
-          <li>Lados:
-            <ul>
-              <li>EST–PV1: {info_triangulo['b_EST_PV1']:.3f} m</li>
-              <li>EST–PV2: {info_triangulo['c_EST_PV2']:.3f} m</li>
-              <li>PV1–PV2: {info_triangulo['a_PV1_PV2']:.3f} m</li>
-            </ul>
-          </li>
-          <li>Ângulos internos:
-            <ul>
-              <li>Em P1: {decimal_to_dms(info_triangulo['ang_P1_deg'])}</li>
-              <li>Em P2: {decimal_to_dms(info_triangulo['ang_P2_deg'])}</li>
-              <li>Em P3: {decimal_to_dms(info_triangulo['ang_P3_deg'])}</li>
-            </ul>
-          </li>
-          <li>Área: {info_triangulo['area_m2']:.3f} m²</li>
-        </ul>
-        """
+def gerar_xlsx_com_figura(info_triangulo, figura_buf):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        wb = writer.book
 
-    html = f"""
-    <html>
-      <head>
-        <meta charset="utf-8"/>
-        <title>Relatório – Calculadora de Ângulos e Distâncias</title>
-        <style>
-          body {{ font-family: Arial, sans-serif; margin: 24px; color:#000; }}
-          h1,h2,h3 {{ color:#7f0000; }}
-          p {{ text-align: justify; }}
-        </style>
-      </head>
-      <body>
-        <h1>Calculadora de Ângulos e Distâncias – UFPE</h1>
-        <p>Este arquivo HTML resume o triângulo gerado pelo aplicativo. Abra-o em um navegador e use a função
-        de impressão para salvar em PDF, se desejar.</p>
-        {tri_block}
-      </body>
-    </html>
-    """
-    return html.encode("utf-8")
+        # Aba com resumo numérico
+        df_resumo = pd.DataFrame(
+            {
+                "Descrição": [
+                    "Lado EST–PV1",
+                    "Lado EST–PV2",
+                    "Lado PV1–PV2",
+                    "Ângulo interno em P1",
+                    "Ângulo interno em P2",
+                    "Ângulo interno em P3",
+                    "Área do triângulo (m²)",
+                ],
+                "Valor": [
+                    f"{info_triangulo['b_EST_PV1']:.3f} m",
+                    f"{info_triangulo['c_EST_PV2']:.3f} m",
+                    f"{info_triangulo['a_PV1_PV2']:.3f} m",
+                    decimal_to_dms(info_triangulo["ang_P1_deg"]),
+                    decimal_to_dms(info_triangulo["ang_P2_deg"]),
+                    decimal_to_dms(info_triangulo["ang_P3_deg"]),
+                    f"{info_triangulo['area_m2']:.3f}",
+                ],
+            }
+        )
+        df_resumo.to_excel(writer, sheet_name="ResumoTriangulo", index=False)
 
-def rodape(info_triangulo):
+        # Aba com figura
+        ws_fig = wb.add_worksheet("FiguraTriangulo")
+        writer.sheets["FiguraTriangulo"] = ws_fig
+        if figura_buf is not None:
+            ws_fig.insert_image("B2", "triangulo.jpg", {"image_data": figura_buf})
+
+    output.seek(0)
+    return output.getvalue()
+
+def rodape(info_triangulo, figura_buf):
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v12.1 — cabeçalho revisado, corpo em fonte preta e justificada,
-            ângulos corrigidos e quadro explicativo do triângulo.</code>.
+            Versão do app: <code>UFPE_v13 — cabeçalho unificado, corpo preto justificado,
+            download em XLSX com resumo e figura em JPG.</code>.
         </p>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown("### Download do resumo para impressão em PDF")
-    st.markdown(
-        "<p>O botão abaixo gera um arquivo <b>HTML</b> com o resumo do triângulo. "
-        "Abra o arquivo em um navegador e use <i>Imprimir &gt; Salvar como PDF</i> "
-        "para obter o PDF final.</p>",
-        unsafe_allow_html=True,
-    )
-
-    html_bytes = gerar_html_para_download(info_triangulo)
-    st.download_button(
-        "📄 Baixar HTML do triângulo (para imprimir em PDF)",
-        data=html_bytes,
-        file_name="relatorio_triangulo_ufpe.html",
-        mime="text/html",
-    )
+    if info_triangulo is not None and figura_buf is not None:
+        xlsx_bytes = gerar_xlsx_com_figura(info_triangulo, figura_buf)
+        st.download_button(
+            "📊 Baixar XLSX com resumo e figura do triângulo",
+            data=xlsx_bytes,
+            file_name="triangulo_ufpe_resumo_figura.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    else:
+        st.info(
+            "Para habilitar o download do XLSX com a figura, primeiro gere um triângulo "
+            "na seção 8."
+        )
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1189,7 +1133,8 @@ uploaded = secao_modelo_e_upload()
 df_uso = processar_upload(uploaded)
 
 tri_info = None
+tri_fig_buf = None
 if df_uso is not None:
-    tri_info = secao_calculos(df_uso)
+    tri_info, tri_fig_buf = secao_calculos(df_uso)
 
-rodape(tri_info)
+rodape(tri_info, tri_fig_buf)
