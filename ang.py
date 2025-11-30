@@ -3,7 +3,7 @@
 
 import io
 import math
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ st.set_page_config(
     page_icon="📐",
 )
 
-# ==================== Funções auxiliares (antes estavam em utils/processing) ====================
+# ==================== Funções auxiliares ====================
 
 REQUIRED_COLS = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 
@@ -29,30 +29,31 @@ def parse_angle_to_decimal(value: str) -> float:
     """
     if value is None:
         return float("nan")
+
     s = str(value).strip()
     if s == "":
         return float("nan")
 
-    # Tenta decimal simples (número puro com ponto ou vírgula)
+    # 1) tenta decimal simples
     try:
-        # se não tiver nenhum caractere não numérico típico de DMS, considera decimal
         if all(ch.isdigit() or ch in ".,-+" for ch in s):
             return float(s.replace(",", "."))
     except Exception:
         pass
 
-    # Normaliza símbolos DMS para espaços
-    # inclui variações unicode: ’ ´ ′ ″
-    for ch in ["°", "'", "’", "´", "′", '"', "″"]:
+    # 2) normaliza símbolos DMS para espaços
+    for ch in ["°", "º", "'", "’", "´", "′", '"', "″"]:
         s = s.replace(ch, " ")
 
-    # Troca vírgula por ponto e quebra em partes
+    # vírgula como ponto
     s = s.replace(",", ".")
+
     parts = s.split()
     parts = [p for p in parts if p != ""]
     if len(parts) == 0:
         return float("nan")
 
+    # 3) interpreta como D, M, S
     try:
         deg = float(parts[0])
         minutes = float(parts[1]) if len(parts) > 1 else 0.0
@@ -64,22 +65,36 @@ def parse_angle_to_decimal(value: str) -> float:
     if deg < 0:
         sign = -1.0
         deg = abs(deg)
+
     return sign * (deg + minutes / 60.0 + seconds / 3600.0)
 
 
 def decimal_to_dms(angle_deg: float) -> str:
     """
-    Converte graus decimais para string DMS: 145°47'33"
+    Converte graus decimais para string DMS com segundos inteiros: 145°47'34"
     """
     if angle_deg is None or math.isnan(angle_deg):
         return ""
     sign = "-" if angle_deg < 0 else ""
     a = abs(angle_deg)
+
     d = int(a)
     m_f = (a - d) * 60
     m = int(m_f)
-    s = (m_f - m) * 60
-    return f"{sign}{d:02d}°{m:02d}'{s:05.2f}\""
+    s_f = (m_f - m) * 60
+
+    # arredonda segundos para inteiro
+    s = int(round(s_f))
+
+    # ajusta “estouro” de 60"
+    if s == 60:
+        s = 0
+        m += 1
+    if m == 60:
+        m = 0
+        d += 1
+
+    return f"{sign}{d:02d}°{m:02d}'{s:02d}\""
 
 
 def mean_direction_two(a_deg: float, b_deg: float) -> float:
@@ -119,8 +134,8 @@ def mean_direction_list(angles_deg: pd.Series) -> float:
 
 def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
     """
-    Harmoniza nomes de colunas vindos de planilhas diversas para os nomes
-    esperados: EST, PV, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI.
+    Harmoniza nomes de colunas vindos de planilhas diversas para:
+    EST, PV, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI.
     """
     df = df_original.copy()
     colmap = {}
@@ -225,11 +240,11 @@ def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
     z_pd_rad = res["Z_PD_deg"] * np.pi / 180.0
     z_pi_rad = res["Z_PI_deg"] * np.pi / 180.0
 
-    # DH / DN
-    res["DH_PD_m"] = np.abs(res["DI_PD_m"] * np.sin(z_pd_rad)).round(4)
-    res["DN_PD_m"] = np.abs(res["DI_PD_m"] * np.cos(z_pd_rad)).round(4)
-    res["DH_PI_m"] = np.abs(res["DI_PI_m"] * np.sin(z_pi_rad)).round(4)
-    res["DN_PI_m"] = np.abs(res["DI_PI_m"] * np.cos(z_pi_rad)).round(4)
+    # DH / DN (3 casas decimais)
+    res["DH_PD_m"] = np.abs(res["DI_PD_m"] * np.sin(z_pd_rad)).round(3)
+    res["DN_PD_m"] = np.abs(res["DI_PD_m"] * np.cos(z_pd_rad)).round(3)
+    res["DH_PI_m"] = np.abs(res["DI_PI_m"] * np.sin(z_pi_rad)).round(3)
+    res["DN_PI_m"] = np.abs(res["DI_PI_m"] * np.cos(z_pi_rad)).round(3)
 
     # Hz médio linha a linha
     res["Hz_med_deg"] = res.apply(
@@ -237,9 +252,9 @@ def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
     )
     res["Hz_med_DMS"] = res["Hz_med_deg"].apply(decimal_to_dms)
 
-    # DH/DN médios linha a linha
-    res["DH_med_m"] = np.abs((res["DH_PD_m"] + res["DH_PI_m"]) / 2.0).round(4)
-    res["DN_med_m"] = np.abs((res["DN_PD_m"] + res["DN_PI_m"]) / 2.0).round(4)
+    # DH/DN médios linha a linha (3 casas)
+    res["DH_med_m"] = np.abs((res["DH_PD_m"] + res["DH_PI_m"]) / 2.0).round(3)
+    res["DN_med_m"] = np.abs((res["DN_PD_m"] + res["DN_PI_m"]) / 2.0).round(3)
 
     return res
 
@@ -251,6 +266,7 @@ def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
       - DI médias aritméticas.
       - DH/DN médios derivados.
     """
+
     def agg_par(df_group: pd.DataFrame) -> pd.Series:
         out = {}
         out["Hz_PD_med_deg"] = mean_direction_list(df_group["Hz_PD_deg"])
@@ -269,29 +285,29 @@ def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
     )
     df_par["Hz_med_DMS_par"] = df_par["Hz_med_deg_par"].apply(decimal_to_dms)
 
-    # DH/DN médios por par (usando DI_PD_med, Z_PD_med etc.)
+    # DH/DN médios por par (3 casas)
     zpd_par_rad = df_par["Z_PD_med_deg"] * np.pi / 180.0
     zpi_par_rad = df_par["Z_PI_med_deg"] * np.pi / 180.0
 
     df_par["DH_PD_m_par"] = np.abs(
         df_par["DI_PD_med_m"] * np.sin(zpd_par_rad)
-    ).round(4)
+    ).round(3)
     df_par["DN_PD_m_par"] = np.abs(
         df_par["DI_PD_med_m"] * np.cos(zpd_par_rad)
-    ).round(4)
+    ).round(3)
     df_par["DH_PI_m_par"] = np.abs(
         df_par["DI_PI_med_m"] * np.sin(zpi_par_rad)
-    ).round(4)
+    ).round(3)
     df_par["DN_PI_m_par"] = np.abs(
         df_par["DI_PI_med_m"] * np.cos(zpi_par_rad)
-    ).round(4)
+    ).round(3)
 
     df_par["DH_med_m_par"] = np.abs(
         (df_par["DH_PD_m_par"] + df_par["DH_PI_m_par"]) / 2.0
-    ).round(4)
+    ).round(3)
     df_par["DN_med_m_par"] = np.abs(
         (df_par["DN_PD_m_par"] + df_par["DN_PI_m_par"]) / 2.0
-    ).round(4)
+    ).round(3)
 
     return df_par
 
@@ -306,17 +322,18 @@ def tabela_medicao_angular_horizontal(df_par: pd.DataFrame) -> pd.DataFrame:
     hz_pi_med_dms = df_par["Hz_PI_med_deg"].apply(decimal_to_dms)
     hz_med_dms = df_par["Hz_med_deg_par"].apply(decimal_to_dms)
 
-    return pd.DataFrame(
+    tab = pd.DataFrame(
         {
             "EST": df_par["EST"],
             "PV": df_par["PV"],
             "Hz PD": hz_pd_med_dms,
             "Hz PI": hz_pi_med_dms,
             "Hz Médio": hz_med_dms,
-            "Hz Reduzido": hz_med_dms,       # depois podemos reduzir (vante - ré)
+            "Hz Reduzido": hz_med_dms,       # depois podemos aplicar Ré/Vante aqui
             "Média das Séries": hz_med_dms,  # média das séries PD/PI
         }
     )
+    return tab
 
 
 def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
@@ -324,7 +341,7 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
     Tabela no formato do slide:
     'Medição Angular Vertical/Zenital'
     Colunas: EST, PV, Z PD, Z PI, Z Corrigido, Média das Séries.
-    Usa: Z_corr = (Z_PD_med - Z_PI_med) / 2 + 180°
+    Usa: Z = (Z_PD_med - Z_PI_med) / 2 + 180°
     """
     z_pd_med = df_par["Z_PD_med_deg"]
     z_pi_med = df_par["Z_PI_med_deg"]
@@ -335,7 +352,7 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
     z_pi_med_dms = z_pi_med.apply(decimal_to_dms)
     z_corr_dms = z_corr_deg.apply(decimal_to_dms)
 
-    return pd.DataFrame(
+    tab = pd.DataFrame(
         {
             "EST": df_par["EST"],
             "PV": df_par["PV"],
@@ -345,9 +362,10 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
             "Média das Séries": z_corr_dms,
         }
     )
+    return tab
 
 
-# ==================== CSS e layout visual UFPE (igual antes) ====================
+# ==================== CSS e layout visual UFPE ====================
 
 CUSTOM_CSS = """
 <style>
@@ -603,35 +621,72 @@ def secao_calculos(df_uso: pd.DataFrame):
 
     # Linha a linha
     res = calcular_linha_a_linha(df_uso)
+
     st.markdown("##### Tabela linha a linha (cada série PD/PI)")
-    st.dataframe(
-        res[
-            [
-                "EST",
-                "PV",
-                "Hz_PD",
-                "Hz_PI",
-                "Hz_med_DMS",
-                "Z_PD",
-                "Z_PI",
-                "DH_PD_m",
-                "DH_PI_m",
-                "DH_med_m",
-            ]
-        ],
-        use_container_width=True,
-    )
+    cols_linha = [
+        "EST",
+        "PV",
+        "Hz_PD",
+        "Hz_PI",
+        "Hz_med_DMS",
+        "Z_PD",
+        "Z_PI",
+        "DH_PD_m",
+        "DH_PI_m",
+        "DH_med_m",
+    ]
+    df_linha = res[cols_linha].copy()
+
+    # Formata DH com vírgula e 3 casas decimais
+    for c in ["DH_PD_m", "DH_PI_m", "DH_med_m"]:
+        df_linha[c] = df_linha[c].apply(
+            lambda x: f"{x:.3f}".replace(".", ",") if pd.notna(x) else ""
+        )
+
+    st.dataframe(df_linha, use_container_width=True)
 
     # Agregado por par EST–PV
     df_par = agregar_por_par(res)
 
     # Tabela Horizontal
     st.markdown("##### Medição Angular Horizontal")
+    st.markdown(
+        r"""
+**Fórmulas utilizadas (Hz médio e Hz reduzido)**  
+
+Média das direções (por série PD/PI):  
+
+\[
+Hz = \frac{Hz_{PD} + Hz_{PI}}{2} \pm 90^\circ
+\]
+
+com:
+- **+** se \(Hz_{PD} > Hz_{PI}\)  
+- **−** se \(Hz_{PD} < Hz_{PI}\)
+
+Cálculo do ângulo entre duas direções (redução entre Ré e Vante):  
+
+\[
+\alpha = Hz_{\text{Vante}} - Hz_{\text{Ré}}
+\]
+""",
+        unsafe_allow_html=False,
+    )
     tab_hz = tabela_medicao_angular_horizontal(df_par)
     st.dataframe(tab_hz, use_container_width=True)
 
     # Tabela Vertical
     st.markdown("##### Medição Angular Vertical/Zenital")
+    st.markdown(
+        r"""
+**Fórmula utilizada (Z corrigido)**  
+
+\[
+Z = \frac{Z'_{PD} - Z'_{PI}}{2} + 180^\circ
+\]
+""",
+        unsafe_allow_html=False,
+    )
     tab_z = tabela_medicao_angular_vertical(df_par)
     st.dataframe(tab_z, use_container_width=True)
 
@@ -640,7 +695,7 @@ def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>único_arquivo_1.0 — Tabelas no formato do slide (Hz / Z)</code>.
+            Versão do app: <code>único_arquivo_1.1 — Tabelas no formato do slide (Hz / Z), DMS com segundos inteiros, DH com 3 casas.</code>.
         </p>
         """,
         unsafe_allow_html=True,
