@@ -1,10 +1,11 @@
 # app.py
 # UFPE - Calculadora de Ângulos e Distâncias (Método das Direções)
-# Cabeçalho no estilo da folha enviada; download final em XLSX com figura em JPG.
+# Cabeçalho no estilo da folha enviada; identificação lida do Excel;
+# download final em XLSX com figura em JPG.
 
 import io
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 import numpy as np
 import pandas as pd
@@ -492,12 +493,9 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
         b**2 + c**2 - 2 * b * c * math.cos(math.radians(alpha_deg))
     )
 
-    # a = PV1–PV2 (P3–P1)
-    # b = EST–PV1 (P2–P3)
-    # c = EST–PV2 (P2–P1)
-    ang_P1 = _angulo_interno(b, c, a)  # vértice em P1 (PV2) – oposto a b
-    ang_P2 = _angulo_interno(a, b, c)  # vértice em P2 (EST) – oposto a a
-    ang_P3 = _angulo_interno(c, a, b)  # vértice em P3 (PV1) – oposto a c
+    ang_P1 = _angulo_interno(b, c, a)
+    ang_P2 = _angulo_interno(a, b, c)
+    ang_P3 = _angulo_interno(c, a, b)
 
     s = (a + b + c) / 2.0
     area = math.sqrt(max(s * (s - a) * (s - b) * (s - c), 0.0))
@@ -612,16 +610,161 @@ def plotar_triangulo_info(info):
     return buf
 
 # =====================================================================
-#  Aplica CSS
+#  CSS
 # =====================================================================
 
+CUSTOM_CSS = """
+<style>
+body, .stApp {
+  background:#f3f4f6;
+  color:#111827;
+  font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+}
+
+.main-card{
+  background:#ffffff;
+  color:#111827;
+  border-radius:22px;
+  padding:1.4rem 2.0rem 1.4rem 2.0rem;
+  border:1px solid rgba(148,27,37,0.20);
+  box-shadow:0 18px 40px rgba(15,23,42,0.18);
+  max-width:1320px;
+  margin:1.2rem auto 2.0rem auto;
+}
+.main-card p { text-align: justify; }
+
+.ufpe-header-band{
+  width:100%;
+  padding:0.7rem 1.0rem 0.6rem 1.0rem;
+  border-radius:14px;
+  background:linear-gradient(90deg,#4b0000 0%,#7e0000 40%,#b30000 75%,#4b0000 100%);
+  color:#f9fafb;
+  display:flex;
+  align-items:flex-start;
+  gap:0.8rem;
+}
+.ufpe-header-text{
+  font-size:0.87rem;
+}
+.ufpe-header-text b{
+  font-weight:700;
+}
+
+.section-title{
+  font-size:1.00rem;
+  font-weight:700;
+  margin-top:1.5rem;
+  margin-bottom:0.6rem;
+  display:flex;
+  align-items:center;
+  gap:0.4rem;
+  color:#8b0000;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+}
+.section-title span.dot{
+  width:9px;
+  height:9px;
+  border-radius:999px;
+  background:radial-gradient(circle at 30% 30%,#ffffff 0%,#ffbdbd 35%,#7f0000 90%);
+}
+
+.helper-box{
+  border-radius:10px;
+  padding:0.6rem 0.8rem;
+  background:#fff5f5;
+  border:1px solid rgba(148,27,37,0.35);
+  font-size:0.86rem;
+  color:#111827;
+  margin-bottom:0.5rem;
+}
+
+[data-testid="stDataFrame"],[data-testid="stDataEditor"]{
+  background:#ffffff !important;
+  border-radius:10px;
+  border:1px solid rgba(148,27,37,0.25);
+  box-shadow:0 10px 22px rgba(15,23,42,0.12);
+}
+
+.stButton>button, .stDownloadButton>button {
+  background: #b30000;
+  color: #111827;
+  border-radius: 999px;
+  border: 1px solid #7f0000;
+  padding: 0.35rem 1.1rem;
+  font-weight: 600;
+}
+.stButton>button:hover, .stDownloadButton>button:hover {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #b30000;
+}
+
+.footer-text{
+  font-size:0.75rem;
+  color:#6b7280;
+}
+
+:root{color-scheme:light;}
+</style>
+"""
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# =====================================================================
+#  Leitura da aba de identificação
+# =====================================================================
+
+def ler_identificacao_from_df(df_id: pd.DataFrame) -> Dict[str, str]:
+    """
+    Espera uma tabela com colunas: Campo | Valor
+    Campos relevantes: Professor(a), Equipamento, Data, Local, Patrimônio.
+    """
+    id_map = {
+        "Professor(a)": "",
+        "Equipamento": "",
+        "Data": "",
+        "Local": "",
+        "Patrimônio": "",
+    }
+    if df_id is None or df_id.empty:
+        return id_map
+
+    # tolerante ao nome das colunas
+    cols = {c.lower(): c for c in df_id.columns}
+    campo_col = None
+    valor_col = None
+    for c in df_id.columns:
+        if c.strip().lower() in ["campo", "campos"]:
+            campo_col = c
+        if c.strip().lower() in ["valor", "valores"]:
+            valor_col = c
+    if campo_col is None or valor_col is None:
+        return id_map
+
+    for _, row in df_id.iterrows():
+        campo = str(row[campo_col]).strip()
+        val = "" if pd.isna(row[valor_col]) else str(row[valor_col]).strip()
+        if campo in id_map:
+            id_map[campo] = val
+    return id_map
 
 # =====================================================================
 #  Cabeçalho
 # =====================================================================
 
-def cabecalho_ufpe():
+def cabecalho_ufpe(info_id: Dict[str, str]):
+    prof = info_id.get("Professor(a)", "")
+    equip = info_id.get("Equipamento", "")
+    data = info_id.get("Data", "")
+    local = info_id.get("Local", "")
+    patr = info_id.get("Patrimônio", "")
+
+    def linha(label, valor):
+        if valor:
+            return f"{label}: <u>{valor}</u><br>"
+        else:
+            return f"{label}: _________________________________<br>"
+
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
@@ -633,23 +776,22 @@ def cabecalho_ufpe():
                 width=70,
             )
         with col_text:
-            st.markdown(
-                """
-                <div class="ufpe-header-text">
-                    <b>UNIVERSIDADE FEDERAL DE PERNAMBUCO - UFPE</b><br>
-                    DECART — Departamento de Engenharia Cartográfica<br>
-                    LATOP — Laboratório de Topografia<br>
-                    Curso: Engenharia Cartográfica e Agrimensura<br>
-                    Disciplina: Equipamentos de Medição<br>
-                    Professor(a): _________________________________<br>
-                    Equipamento: ________________________________<br>
-                    Data: ________________________________________<br>
-                    Local: _______________________________________<br>
-                    Patrimônio: _________________________________
-                </div>
-                """,
-                unsafe_allow_html=True,
+            texto = (
+                "<div class='ufpe-header-text'>"
+                "<b>UNIVERSIDADE FEDERAL DE PERNAMBUCO - UFPE</b><br>"
+                "DECART — Departamento de Engenharia Cartográfica<br>"
+                "LATOP — Laboratório de Topografia<br>"
+                "Curso: Engenharia Cartográfica e Agrimensura<br>"
+                "Disciplina: Equipamentos de Medição<br>"
+                f"{linha('Professor(a)', prof)}"
+                f"{linha('Equipamento', equip)}"
+                f"{linha('Data', data)}"
+                f"{linha('Local', local)}"
+                f"{linha('Patrimônio', patr)}"
+                "</div>"
             )
+            st.markdown(texto, unsafe_allow_html=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown(
@@ -670,17 +812,58 @@ def cabecalho_ufpe():
             """
             <div class="helper-box">
                 <b>Preenchimento dos dados de identificação:</b><br>
-                Recomenda-se que informações como professor(a), equipamento, data,
-                local e patrimônio sejam preenchidas diretamente no modelo de planilha.
+                Os campos Professor(a), Equipamento, Data, Local e Patrimônio são
+                lidos automaticamente da aba <b>Identificacao</b> do modelo Excel.
                 Caso algum campo venha em branco, ele poderá ser completado manualmente
-                no próprio arquivo exportado.
+                no arquivo exportado.
             </div>
             """,
             unsafe_allow_html=True,
         )
 
 # =====================================================================
-#  Upload / modelo
+#  Modelo de Excel (duas abas)
+# =====================================================================
+
+def gerar_modelo_excel():
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+        # Aba Identificacao
+        df_id = pd.DataFrame(
+            {
+                "Campo": [
+                    "Professor(a)",
+                    "Equipamento",
+                    "Data",
+                    "Local",
+                    "Patrimônio",
+                ],
+                "Valor": ["", "", "", "", ""],
+            }
+        )
+        df_id.to_excel(writer, sheet_name="Identificacao", index=False)
+
+        # Aba Dados
+        df_dados = pd.DataFrame(
+            {
+                "EST": ["P1", "P1", "P1", "P1"],
+                "PV": ["P2", "P3", "P2", "P3"],
+                "SEQ": [1, 1, 2, 2],
+                "Hz_PD": ["00°00'00\"", "18°58'22\"", "00°01'01\"", "18°59'34\""],
+                "Hz_PI": ["179°59'48\"", "198°58'14\"", "180°00'45\"", "198°59'24\""],
+                "Z_PD": ["90°51'08\"", "90°51'25\"", "90°51'06\"", "90°51'24\""],
+                "Z_PI": ["269°08'52\"", "269°08'33\"", "269°08'50\"", "269°08'26\""],
+                "DI_PD": [25.365, 26.285, 25.365, 26.285],
+                "DI_PI": [25.365, 26.285, 25.365, 26.285],
+            }
+        )
+        df_dados.to_excel(writer, sheet_name="Dados", index=False)
+
+    buf.seek(0)
+    return buf.getvalue()
+
+# =====================================================================
+#  Upload / leitura
 # =====================================================================
 
 def secao_modelo_e_upload():
@@ -688,32 +871,27 @@ def secao_modelo_e_upload():
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>1. Modelo de dados (Hz, Z, DI e SEQ)</span>
+            <span>1. Modelo de planilha</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    template_df = pd.DataFrame(
-        {
-            "EST": ["P1", "P1", "P1", "P1"],
-            "PV": ["P2", "P3", "P2", "P3"],
-            "SEQ": [1, 1, 2, 2],
-            "Hz_PD": ["00°00'00\"", "18°58'22\"", "00°01'01\"", "18°59'34\""],
-            "Hz_PI": ["179°59'48\"", "198°58'14\"", "180°00'45\"", "198°59'24\""],
-            "Z_PD": ["90°51'08\"", "90°51'25\"", "90°51'06\"", "90°51'24\""],
-            "Z_PI": ["269°08'52\"", "269°08'33\"", "269°08'50\"", "269°08'26\""],
-            "DI_PD": [25.365, 26.285, 25.365, 26.285],
-            "DI_PI": [25.365, 26.285, 25.365, 26.285],
-        }
-    )
-    excel_bytes = io.BytesIO()
-    template_df.to_excel(excel_bytes, index=False)
-    excel_bytes.seek(0)
+
+    modelo_bytes = gerar_modelo_excel()
     st.download_button(
         "📥 Baixar modelo Excel (.xlsx)",
-        data=excel_bytes.getvalue(),
-        file_name="modelo_medicao_direcoes_exemplos.xlsx",
+        data=modelo_bytes,
+        file_name="modelo_medicao_direcoes_ufpe.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.markdown(
+        """
+        <p style="font-size:0.9rem;">
+        O modelo contém duas abas: <b>Identificacao</b> (dados do cabeçalho)
+        e <b>Dados</b> (leituras Hz, Z e distâncias). Preencha ambas conforme necessário.
+        </p>
+        """,
+        unsafe_allow_html=True,
     )
 
     st.markdown(
@@ -727,27 +905,58 @@ def secao_modelo_e_upload():
     )
 
     uploaded = st.file_uploader(
-        "Envie a planilha preenchida (EST, PV, SEQ, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI)",
-        type=["xlsx", "xls", "csv"],
+        "Envie o arquivo Excel preenchido (com abas Identificacao e Dados)",
+        type=["xlsx", "xls"],
     )
     return uploaded
 
-def processar_upload(uploaded):
+def processar_upload(uploaded) -> Tuple[Optional[pd.DataFrame], Dict[str, str]]:
+    info_id: Dict[str, str] = {
+        "Professor(a)": "",
+        "Equipamento": "",
+        "Data": "",
+        "Local": "",
+        "Patrimônio": "",
+    }
+
     if uploaded is None:
-        return None
+        return None, info_id
+
     try:
-        if uploaded.name.lower().endswith(".csv"):
-            raw_df = pd.read_csv(uploaded)
-        else:
-            raw_df = pd.read_excel(uploaded)
+        xls = pd.ExcelFile(uploaded)
+        sheet_names = [s.lower() for s in xls.sheet_names]
+        # aba Identificacao
+        sheet_id = None
+        for s in xls.sheet_names:
+            if s.strip().lower() in ["identificacao", "identificação"]:
+                sheet_id = s
+                break
+        if sheet_id is not None:
+            df_id = pd.read_excel(xls, sheet_name=sheet_id)
+            info_id = ler_identificacao_from_df(df_id)
+
+        # aba Dados (obrigatória)
+        sheet_dados = None
+        for s in xls.sheet_names:
+            if s.strip().lower() in ["dados", "medicoes", "medições"]:
+                sheet_dados = s
+                break
+        if sheet_dados is None:
+            sheet_dados = xls.sheet_names[0]
+
+        raw_df = pd.read_excel(xls, sheet_name=sheet_dados)
+
     except Exception as e:
         st.error(f"Erro ao ler o arquivo: {e}")
-        return None
+        return None, info_id
 
-    st.success(f"Arquivo '{uploaded.name}' carregado ({len(raw_df)} linhas).")
+    st.success(
+        f"Arquivo '{uploaded.name}' carregado. "
+        f"Aba de dados utilizada: '{sheet_dados}'."
+    )
 
     df_valid, erros = validar_dataframe(raw_df)
-    st.subheader("Pré-visualização dos dados importados")
+    st.subheader("Pré-visualização dos dados importados (aba Dados)")
     cols_to_show = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
     st.dataframe(df_valid[cols_to_show], use_container_width=True)
 
@@ -755,10 +964,10 @@ def processar_upload(uploaded):
         st.error("Não foi possível calcular devido aos seguintes problemas:")
         for e in erros:
             st.markdown(f"- {e}")
-        return None
+        return None, info_id
     else:
         cols_use = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
-        return df_valid[cols_use].copy()
+        return df_valid[cols_use].copy(), info_id
 
 # =====================================================================
 #  Seções de cálculo e triângulo
@@ -917,37 +1126,6 @@ def secao_calculos(df_uso: pd.DataFrame):
                         f"**Área do triângulo:** `{info['area_m2']:.3f}` m²"
                     )
 
-                    st.markdown(
-                        """
-                        <div class="helper-box" style="margin-top:0.7rem;">
-                        <b>Como a figura geométrica foi calculada:</b><br>
-                        <p>
-                        • A partir das leituras na estação escolhida, o programa obteve as distâncias horizontais médias
-                        (<i>DH</i>) para os lados EST–PV1 e EST–PV2.<br>
-                        • Com as direções horizontais médias (<i>Hz</i>) desses dois alinhamentos, foi calculado o ângulo
-                        interno na estação como a diferença entre as direções, reduzida para o intervalo [0°, 180°].<br>
-                        • Conhecendo dois lados e o ângulo entre eles, a terceira distância (entre PV1 e PV2) foi obtida
-                        pela Lei dos Cossenos:<br>
-                        &nbsp;&nbsp;<code>a² = b² + c² − 2·b·c·cos(α)</code>, em que:
-                        </p>
-                        <ul style="margin-top:0.1rem;margin-bottom:0.2rem;">
-                          <li><code>b</code> = distância média EST–PV1</li>
-                          <li><code>c</code> = distância média EST–PV2</li>
-                          <li><code>α</code> = diferença entre as direções horizontais médias de EST–PV1 e EST–PV2</li>
-                          <li><code>a</code> = distância entre PV1 e PV2</li>
-                        </ul>
-                        <p>
-                        • Os ângulos internos em P1, P2 e P3 foram calculados novamente pela Lei dos Cossenos,
-                        agora utilizando os três lados do triângulo.<br>
-                        • A área do triângulo foi obtida pela fórmula de Heron:<br>
-                        &nbsp;&nbsp;<code>s = (a + b + c)/2</code>,<br>
-                        &nbsp;&nbsp;<code>Área = √[ s·(s − a)·(s − b)·(s − c) ]</code>.
-                        </p>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
                 with col2:
                     img_buf = plotar_triangulo_info(info)
 
@@ -998,8 +1176,8 @@ def rodape(info_triangulo, figura_buf):
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v13.1 — degradê apenas no cabeçalho,
-            corpo neutro, download em XLSX com resumo e figura em JPG.</code>.
+            Versão do app: <code>UFPE_v14 — cabeçalho com identificação lida do Excel;
+            degradê apenas no cabeçalho; download em XLSX com resumo e figura em JPG.</code>.
         </p>
         """,
         unsafe_allow_html=True,
@@ -1025,9 +1203,9 @@ def rodape(info_triangulo, figura_buf):
 #  Execução
 # =====================================================================
 
-cabecalho_ufpe()
 uploaded = secao_modelo_e_upload()
-df_uso = processar_upload(uploaded)
+df_uso, info_id = processar_upload(uploaded)
+cabecalho_ufpe(info_id)
 
 tri_info = None
 tri_fig_buf = None
