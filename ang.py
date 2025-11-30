@@ -306,7 +306,8 @@ def tabela_z_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     df_med["Z_med_series_DMS"] = df_med["Z_med_series_deg"].apply(decimal_to_dms)
 
     df = df.merge(df_med, on=["EST", "PV"], how="left")
-    df.sort_values(by "_ordem_original", inplace=True)
+    # LINHA CORRIGIDA
+    df.sort_values(by="_ordem_original", inplace=True)
 
     tab = pd.DataFrame(
         {
