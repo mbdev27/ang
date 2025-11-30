@@ -570,6 +570,9 @@ if df_uso is not None:
 
     res = df_uso.copy()
 
+    # Marca Ré/Vante: aqui estou considerando que PV = P1 é Ré
+    res["Tipo"] = res["PV"].apply(lambda pv: "Ré" if str(pv).strip().upper() == "P1" else "Vante")
+
     # Converte ângulos para graus decimais
     for col in ["Hz_PD", "Hz_PI", "Z_PD", "Z_PI"]:
         res[col + "_deg"] = res[col].apply(parse_angle_to_decimal)
@@ -602,6 +605,7 @@ if df_uso is not None:
     resumo_df = pd.DataFrame({
         "EST": res["EST"],
         "PV": res["PV"],
+        "Tipo": res["Tipo"],                 # <<< Ré / Vante
         "Hz_PD": res["Hz_PD"],
         "Hz_PI": res["Hz_PI"],
         "Hz_médio (DMS)": res["Hz_med_DMS"].fillna(""),
@@ -630,7 +634,7 @@ if df_uso is not None:
 st.markdown(
     """
     <p class="footer-text">
-        Versão do app: <code>3.0 — Hz + DH/DN (modelo UFPE, degradês e validação completa)</code>.<br>
+        Versão do app: <code>3.1 — Hz + DH/DN (modelo UFPE, degradês, Ré/Vante)</code>.<br>
         Para gerar/baixar o modelo Excel (.xlsx) no servidor,
         certifique-se de incluir <code>openpyxl</code> no <code>requirements.txt</code>.
     </p>
