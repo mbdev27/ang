@@ -516,84 +516,111 @@ def angulo_interno(p_a, p_b, p_c) -> float:
     return ang
 
 
-def desenhar_poligono(coords: Dict[str, Tuple[float, float]]):
+def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     """
-    Desenha o triângulo P1–P2–P3 (se existirem) com rótulos de lados e ângulos internos.
+    Permite escolher três pontos quaisquer para formar o triângulo
+    e desenha o polígono com rótulos de lados e ângulos internos.
     """
-    must_pts = ["P1", "P2", "P3"]
-    if not all(p in coords for p in must_pts):
-        st.info("Coordenadas insuficientes para desenhar o triângulo P1–P2–P3.")
+    if len(coords) < 3:
+        st.info("Coordenadas insuficientes para formar um triângulo.")
         return
 
-    p1 = coords["P1"]
-    p2 = coords["P2"]
-    p3 = coords["P3"]
+    pontos_disponiveis = sorted(coords.keys())
+
+    col_sel1, col_sel2, col_sel3 = st.columns(3)
+    with col_sel1:
+        p_a = st.selectbox(
+            "Vértice A do triângulo",
+            options=pontos_disponiveis,
+            index=0,
+            key="tri_pt_a",
+        )
+    with col_sel2:
+        opcoes_b = [p for p in pontos_disponiveis if p != p_a]
+        p_b = st.selectbox(
+            "Vértice B do triângulo",
+            options=opcoes_b,
+            index=0,
+            key="tri_pt_b",
+        )
+    with col_sel3:
+        opcoes_c = [p for p in pontos_disponiveis if p not in (p_a, p_b)]
+        if len(opcoes_c) == 0:
+            st.info("Selecione A e B diferentes para disponibilizar um C.")
+            return
+        p_c = st.selectbox(
+            "Vértice C do triângulo",
+            options=opcoes_c,
+            index=0,
+            key="tri_pt_c",
+        )
+
+    A = coords[p_a]
+    B = coords[p_b]
+    C = coords[p_c]
 
     # Distâncias
-    d12 = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
-    d23 = math.hypot(p3[0] - p2[0], p3[1] - p2[1])
-    d31 = math.hypot(p1[0] - p3[0], p1[1] - p3[1])
+    dAB = math.hypot(B[0] - A[0], B[1] - A[1])
+    dBC = math.hypot(C[0] - B[0], C[1] - B[1])
+    dCA = math.hypot(A[0] - C[0], A[1] - C[1])
 
     # Ângulos internos
-    ang_p1 = angulo_interno(p2, p1, p3)
-    ang_p2 = angulo_interno(p1, p2, p3)
-    ang_p3 = angulo_interno(p1, p3, p2)
+    ang_A = angulo_interno(B, A, C)
+    ang_B = angulo_interno(A, B, C)
+    ang_C = angulo_interno(A, C, B)
 
-    xs = [p1[0], p2[0], p3[0], p1[0]]
-    ys = [p1[1], p2[1], p3[1], p1[1]]
+    xs = [A[0], B[0], C[0], A[0]]
+    ys = [A[1], B[1], C[1], A[1]]
 
     fig, ax = plt.subplots()
     ax.plot(xs, ys, "-o", color="#8B0000", lw=2.3, markersize=8)
 
     # rótulos dos pontos
-    ax.text(p1[0], p1[1], " P1", fontsize=10, color="#111827")
-    ax.text(p2[0], p2[1], " P2", fontsize=10, color="#111827")
-    ax.text(p3[0], p3[1], " P3", fontsize=10, color="#111827")
+    ax.text(A[0], A[1], f" {p_a}", fontsize=10, color="#111827")
+    ax.text(B[0], B[1], f" {p_b}", fontsize=10, color="#111827")
+    ax.text(C[0], C[1], f" {p_c}", fontsize=10, color="#111827")
 
-    # rótulos dos lados (meio de cada segmento)
-    def meio(a, b):
-        return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+    def meio(p, q):
+        return ((p[0] + q[0]) / 2.0, (p[1] + q[1]) / 2.0)
 
-    m12 = meio(p1, p2)
-    m23 = meio(p2, p3)
-    m31 = meio(p3, p1)
+    mAB = meio(A, B)
+    mBC = meio(B, C)
+    mCA = meio(C, A)
 
-    ax.text(m12[0], m12[1], f"{d12:.3f} m", fontsize=9, color="#990000")
-    ax.text(m23[0], m23[1], f"{d23:.3f} m", fontsize=9, color="#990000")
-    ax.text(m31[0], m31[1], f"{d31:.3f} m", fontsize=9, color="#990000")
+    ax.text(mAB[0], mAB[1], f"{dAB:.3f} m", fontsize=9, color="#990000")
+    ax.text(mBC[0], mBC[1], f"{dBC:.3f} m", fontsize=9, color="#990000")
+    ax.text(mCA[0], mCA[1], f"{dCA:.3f} m", fontsize=9, color="#990000")
 
-    # rótulos dos ângulos próximos aos vértices
-    ax.text(p1[0], p1[1], f"\n∠P1 ≈ {ang_p1:.2f}°", fontsize=9, color="#1f2937")
-    ax.text(p2[0], p2[1], f"\n∠P2 ≈ {ang_p2:.2f}°", fontsize=9, color="#1f2937")
-    ax.text(p3[0], p3[1], f"\n∠P3 ≈ {ang_p3:.2f}°", fontsize=9, color="#1f2937")
+    ax.text(A[0], A[1], f"\n∠{p_a} ≈ {ang_A:.2f}°", fontsize=9, color="#1f2937")
+    ax.text(B[0], B[1], f"\n∠{p_b} ≈ {ang_B:.2f}°", fontsize=9, color="#1f2937")
+    ax.text(C[0], C[1], f"\n∠{p_c} ≈ {ang_C:.2f}°", fontsize=9, color="#1f2937")
 
     ax.set_aspect("equal", "box")
     ax.set_xlabel("E (m)")
     ax.set_ylabel("N (m)")
-    ax.set_title("Polígono aproximado P1–P2–P3 (distâncias e ângulos internos)")
+    ax.set_title(f"Triângulo {p_a}-{p_b}-{p_c} (distâncias e ângulos internos)")
     ax.grid(True, linestyle="--", alpha=0.3)
 
     st.pyplot(fig)
 
-    # tabela resumo de distâncias e ângulos
-    st.markdown("**Resumo dos lados e ângulos internos:**")
+    # tabelas resumo
+    st.markdown("**Resumo dos lados do triângulo selecionado:**")
+    df_lados = pd.DataFrame(
+        {
+            "Lado": [f"{p_a}–{p_b}", f"{p_b}–{p_c}", f"{p_c}–{p_a}"],
+            "Distância (m)": [round(dAB, 3), round(dBC, 3), round(dCA, 3)],
+        }
+    )
+    st.dataframe(df_lados, use_container_width=True)
+
+    st.markdown("**Ângulos internos no triângulo selecionado:**")
     df_ang = pd.DataFrame(
         {
-            "Lado": ["P1–P2", "P2–P3", "P3–P1"],
-            "Distância (m)": [round(d12, 3), round(d23, 3), round(d31, 3)],
+            "Vértice": [p_a, p_b, p_c],
+            "Ângulo interno (°)": [round(ang_A, 2), round(ang_B, 2), round(ang_C, 2)],
         }
     )
-    df_int = pd.DataFrame(
-        {
-            "Vértice": ["P1", "P2", "P3"],
-            "Ângulo interno (°)": [round(ang_p1, 2), round(ang_p2, 2), round(ang_p3, 2)],
-        }
-    )
-    col_lados, col_angs = st.columns(2)
-    with col_lados:
-        st.dataframe(df_ang, use_container_width=True)
-    with col_angs:
-        st.dataframe(df_int, use_container_width=True)
+    st.dataframe(df_ang, use_container_width=True)
 
 
 # ==================== CSS e identidade visual UFPE ====================
@@ -800,7 +827,7 @@ def cabecalho_ufpe():
             </div>
             <div class="app-subtitle">
                 Cálculo da média das direções Hz, ângulo vertical (Z), distâncias horizontais,
-                Hz reduzido (Ré/Vante) e coordenadas aproximadas do polígono P1–P2–P3.
+                Hz reduzido (Ré/Vante) e coordenadas aproximadas do polígono.
             </div>
             """,
             unsafe_allow_html=True,
@@ -931,7 +958,7 @@ def secao_calculos(df_uso: pd.DataFrame):
     ]
     df_linha = res[cols_linha].copy()
 
-    # Formata DH com vírgula e 3 casas decimais
+    # Formata DH com 3 casas (você ajustou para ponto mesmo)
     for c in ["DH_PD_m", "DH_PI_m", "DH_med_m"]:
         df_linha[c] = df_linha[c].apply(
             lambda x: f"{x:.3f}".replace(".", ".") if pd.notna(x) else ""
@@ -992,7 +1019,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>4. Azimute de referência e polígono P1–P2–P3</span>
+            <span>4. Azimute de referência e polígono</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1034,15 +1061,15 @@ def secao_calculos(df_uso: pd.DataFrame):
     st.markdown("**Coordenadas aproximadas (origem em P1 = 0,0):**")
     st.dataframe(df_coords, use_container_width=True)
 
-    st.markdown("**Polígono aproximado P1–P2–P3 com lados e ângulos internos:**")
-    desenhar_poligono(coords_dict)
+    st.markdown("**Triângulo com pontos selecionáveis (distâncias e ângulos internos):**")
+    desenhar_poligono_selecionavel(coords_dict)
 
 
 def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v2.1 — Hz/Z, Ré/Vante, azimute de referência, coordenadas e polígono com identidade visual UFPE.</code>.
+            Versão do app: <code>UFPE_v2.2 — Hz/Z, Ré/Vante, azimute de referência, coordenadas e triângulo selecionável com identidade visual UFPE.</code>.
         </p>
         """,
         unsafe_allow_html=True,
