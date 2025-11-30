@@ -386,13 +386,16 @@ if uploaded is not None:
 
         results = df[required_cols].copy()
 
+        # Conversão de ângulos
         for c in ['AnguloHorizontal_PD', 'AnguloHorizontal_PI',
                   'AnguloZenital_PD', 'AnguloZenital_PI']:
             results[c + '_deg'] = results[c].apply(parse_angle_to_decimal)
 
+        # Distâncias inclinadas em metros
         for c in ['DistanciaInclinada_PD', 'DistanciaInclinada_PI']:
             results[c + '_m'] = pd.to_numeric(results[c], errors='coerce')
 
+        # Distância horizontal PD
         results['Dh_PD_m'] = results.apply(
             lambda r: (
                 r['DistanciaInclinada_PD_m'] *
@@ -404,6 +407,7 @@ if uploaded is not None:
             axis=1
         )
 
+        # Distância horizontal PI (usada apenas na saída em texto/CSV)
         results['Dh_PI_m'] = results.apply(
             lambda r: (
                 r['DistanciaInclinada_PI_m'] *
@@ -415,33 +419,46 @@ if uploaded is not None:
             axis=1
         )
 
+        # AH médio
         results['AH_med_deg'] = results[
             ['AnguloHorizontal_PD_deg', 'AnguloHorizontal_PI_deg']
         ].mean(axis=1, skipna=True)
         results['AH_med_DMS'] = results['AH_med_deg'].apply(decimal_to_dms)
 
-        # -------------------- Saída em linhas --------------------
-        lines = []
+        # -------------------- Saída em linhas (inclui EST e PV) --------------------
+        linhas_saida = []
         for _, r in results.iterrows():
+            est = str(r.get('EST', '') or '')
+            pv = str(r.get('PV', '') or '')
             dh_pd = r.get('Dh_PD_m')
             dh_pi = r.get('Dh_PI_m')
             ah_dms = r.get('AH_med_DMS') or ""
+
             dh_pd_s = f"{dh_pd:.3f} m" if pd.notna(dh_pd) else ""
             dh_pi_s = f"{dh_pi:.3f} m" if pd.notna(dh_pi) else ""
-            lines.append(f"{dh_pd_s}\t{dh_pi_s}\t{ah_dms}")
 
-        st.markdown("**Saída (cada linha: Dh_PD \\t Dh_PI \\t AH_médio DMS)**")
-        st.code("\n".join(lines), language="text")
+            linhas_saida.append(
+                f"EST: {est}\tPV: {pv}\tDh_PD: {dh_pd_s}\tDh_PI: {dh_pi_s}\tAH_médio: {ah_dms}"
+            )
+
+        st.markdown("**Saída (por linha: EST, PV, Dh_PD, Dh_PI, AH_médio DMS)**")
+        st.code("\n".join(linhas_saida), language="text")
 
         # -------------------- Tabela de conferência -------------------------
-        display_df = results.copy()
-        display_df['Dh_PD_m'] = display_df['Dh_PD_m'].map(
-            lambda x: f"{x:.3f}" if pd.notna(x) else ""
-        )
-        display_df['Dh_PI_m'] = display_df['Dh_PI_m'].map(
-            lambda x: f"{x:.3f}" if pd.notna(x) else ""
-        )
-        display_df['AH_med_DMS'] = display_df['AH_med_DMS'].fillna("")
+        display_df = pd.DataFrame({
+            "EST": results["EST"],
+            "PV": results["PV"],
+            "Ângulo Horizontal (PD)": results["AnguloHorizontal_PD"],
+            "Ângulo Horizontal (PI)": results["AnguloHorizontal_PI"],
+            "Ângulo Zenital (PD)": results["AnguloZenital_PD"],
+            "Ângulo Zenital (PI)": results["AnguloZenital_PI"],
+            "Distância Inclinada (PD)": results["DistanciaInclinada_PD_m"].map(
+                lambda x: f"{x:.3f}" if pd.notna(x) else ""
+            ),
+            "Distância Horizontal": results["Dh_PD_m"].map(
+                lambda x: f"{x:.3f}" if pd.notna(x) else ""
+            ),
+        })
 
         st.markdown(
             """
@@ -453,25 +470,15 @@ if uploaded is not None:
             unsafe_allow_html=True,
         )
 
-        st.dataframe(
-            display_df[
-                [
-                    'EST', 'PV',
-                    'DistanciaInclinada_PD', 'DistanciaInclinada_PI',
-                    'AnguloZenital_PD', 'AnguloZenital_PI',
-                    'Dh_PD_m', 'Dh_PI_m', 'AH_med_DMS'
-                ]
-            ],
-            use_container_width=True
-        )
+        st.dataframe(display_df, use_container_width=True)
 
         # -------------------- Download da saída CSV -------------------------
-        out_df = results[['Dh_PD_m', 'Dh_PI_m', 'AH_med_DMS']].copy()
+        out_df = results[['EST', 'PV', 'Dh_PD_m', 'Dh_PI_m', 'AH_med_DMS']].copy()
         out_df.rename(
             columns={
                 'Dh_PD_m': 'Dh_PD_m (m)',
                 'Dh_PI_m': 'Dh_PI_m (m)',
-                'AH_med_DMS': 'AH_med_DMS'
+                'AH_med_DMS': 'AH_med_DMS',
             },
             inplace=True
         )
