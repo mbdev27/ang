@@ -640,7 +640,7 @@ def secao_calculos(df_uso: pd.DataFrame):
     # Formata DH com vírgula e 3 casas decimais
     for c in ["DH_PD_m", "DH_PI_m", "DH_med_m"]:
         df_linha[c] = df_linha[c].apply(
-            lambda x: f"{x:.3f}".replace(".", ",") if pd.notna(x) else ""
+            lambda x: f"{x:.3f}".replace(".", ".") if pd.notna(x) else ""
         )
 
     st.dataframe(df_linha, use_container_width=True)
