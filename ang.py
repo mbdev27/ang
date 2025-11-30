@@ -116,6 +116,8 @@ body, .stApp {
     border-color: #111827;
     background: linear-gradient(135deg, #111827, #4b0000);
 }
+
+/* Tabelas / editores */
 [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
     background: linear-gradient(145deg, #ffffff 0%, #f9fafb 60%, #ffffff 100%) !important;
     border-radius: 12px;
@@ -136,11 +138,8 @@ body, .stApp {
 [data-testid="stDataFrame"] tbody tr:hover {
     background-color: #f3f0f0 !important;
 }
-[data-testid="stCodeBlock"] {
-    border-radius: 12px;
-    border: 1px solid #e5e7eb;
-    background: #f9fafb !important;
-}
+
+/* Inputs */
 .stTextInput label, .stFileUploader label {
     font-size: 0.86rem;
     font-weight: 600;
@@ -158,6 +157,8 @@ body, .stApp {
     border-color: #a32a36 !important;
     box-shadow: 0 0 0 1px rgba(163,42,54,0.25);
 }
+
+/* Botões */
 .stButton button {
     background: linear-gradient(135deg, #a32a36, #7d1220) !important;
     color: #ffffff !important;
@@ -172,12 +173,40 @@ body, .stApp {
     background: linear-gradient(135deg, #7d1220, #5a0d18) !important;
     box-shadow: 0 4px 12px rgba(90,13,24,0.35);
 }
+
+/* Expander e alertas */
 .streamlit-expanderHeader {
     font-weight: 600;
     color: #7d1220 !important;
 }
 .stAlert {
     border-radius: 10px;
+}
+
+/* ---- Uploader em PT-BR ---- */
+[data-testid="stFileUploaderDropzone"] > div > div {
+    font-size: 0.9rem;
+}
+[data-testid="stFileUploaderDropzone"]::before {
+    content: "Arraste e solte o arquivo aqui ou";
+    display: block;
+    text-align: center;
+    margin-bottom: 0.25rem;
+    color: #374151;
+    font-size: 0.88rem;
+}
+
+/* botão 'Browse files' -> 'Escolher arquivo' com fonte branca */
+[data-testid="stFileUploaderDropzone"] button {
+    color: #ffffff !important;
+    background: linear-gradient(135deg, #a32a36, #7d1220) !important;
+    border-radius: 999px !important;
+    border: none !important;
+    padding: 0.2rem 0.9rem;
+    font-size: 0.85rem;
+}
+[data-testid="stFileUploaderDropzone"] button::before {
+    content: "Escolher arquivo";
 }
 </style>
 """
@@ -229,7 +258,7 @@ with st.container():
         </div>
         <div class="app-subtitle">
             Cálculo da média das direções Hz, distâncias horizontais / diferenças de nível
-            e croqui plano aproximado para representar espacialmente P1, P2 e P3.
+            e croqui plano do triângulo P1–P2–P3.
         </div>
         """,
         unsafe_allow_html=True,
@@ -244,7 +273,7 @@ with st.container():
             <code>Z_PD</code>, <code>Z_PI</code>,
             <code>DI_PD</code>, <code>DI_PI</code>.<br>
             Ângulos em <b>DMS</b> (ex.: 145°47'33") ou <b>decimal</b> (ex.: 145.7925).<br>
-            Distâncias inclinadas em <b>metros</b> (ex.: 25.365).
+            Distâncias inclinadas em <b>metros</b>.
         </div>
         """,
         unsafe_allow_html=True,
@@ -509,7 +538,7 @@ if df_uso is not None:
 
     res = df_uso.copy()
 
-    # dicionário: para cada estação, qual PV é a Ré
+    # Para cada estação, qual PV é Ré
     ref_por_estacao = {
         "P1": "P2",
         "P2": "P1",
@@ -535,19 +564,21 @@ if df_uso is not None:
     )
     res["Hz_med_DMS"] = res["Hz_med_deg"].apply(decimal_to_dms)
 
+    # Distâncias inclinadas
     res["DI_PD_m"] = res["DI_PD"].apply(lambda x: float(str(x).replace(",", ".")))
     res["DI_PI_m"] = res["DI_PI"].apply(lambda x: float(str(x).replace(",", ".")))
 
     z_pd_rad = res["Z_PD_deg"] * np.pi / 180.0
     z_pi_rad = res["Z_PI_deg"] * np.pi / 180.0
 
-    res["DH_PD_m"] = (res["DI_PD_m"] * np.sin(z_pd_rad)).round(3)
-    res["DN_PD_m"] = (res["DI_PD_m"] * np.cos(z_pd_rad)).round(3)
-    res["DH_PI_m"] = (res["DI_PI_m"] * np.sin(z_pi_rad)).round(3)
-    res["DN_PI_m"] = (res["DI_PI_m"] * np.cos(z_pi_rad)).round(3)
+    # Distâncias horizontais e DN (módulo, 4 casas decimais)
+    res["DH_PD_m"] = np.abs(res["DI_PD_m"] * np.sin(z_pd_rad)).round(4)
+    res["DN_PD_m"] = np.abs(res["DI_PD_m"] * np.cos(z_pd_rad)).round(4)
+    res["DH_PI_m"] = np.abs(res["DI_PI_m"] * np.sin(z_pi_rad)).round(4)
+    res["DN_PI_m"] = np.abs(res["DI_PI_m"] * np.cos(z_pi_rad)).round(4)
 
-    res["DH_med_m"] = ((res["DH_PD_m"] + res["DH_PI_m"]) / 2.0).round(3)
-    res["DN_med_m"] = ((res["DN_PD_m"] + res["DN_PI_m"]) / 2.0).round(3)
+    res["DH_med_m"] = np.abs((res["DH_PD_m"] + res["DH_PI_m"]) / 2.0).round(4)
+    res["DN_med_m"] = np.abs((res["DN_PD_m"] + res["DN_PI_m"]) / 2.0).round(4)
 
     resumo_df = pd.DataFrame({
         "EST": res["EST"],
@@ -575,7 +606,6 @@ if df_uso is not None:
         key="download_saida_csv"
     )
 
-# -------------------- 4. Croqui gráfico P1–P2–P3 ------------------------
 # -------------------- 4. Croqui gráfico (triângulo P1–P2–P3) ------------------------
 if res is not None:
     st.markdown(
@@ -597,25 +627,20 @@ if res is not None:
         unsafe_allow_html=True,
     )
 
-    # Filtra apenas linhas com Hz e DH médios válidos
     valid = res.dropna(subset=["Hz_med_deg", "DH_med_m"]).copy()
     if valid.empty:
         st.info("Não há dados suficientes (Hz_médio e DH_médio) para gerar o croqui.")
     else:
-        # Calcula médias por par EST–PV
+        # médias por par EST–PV
         grp = valid.groupby(["EST", "PV"], as_index=False).agg({
             "Hz_med_deg": "mean",
             "DH_med_m": "mean"
         })
 
-        # Coordenadas do triângulo
         coords = {}
-
-        # P1 fixo na origem
         coords["P1"] = (0.0, 0.0)
 
         def posicionar_a_partir_de_P1(pv_nome):
-            """Tenta posicionar P2 ou P3 a partir de leituras P1→PV."""
             pv_up = pv_nome.upper()
             linha = grp[(grp["EST"].str.upper() == "P1") &
                         (grp["PV"].str.upper() == pv_up)]
@@ -624,24 +649,21 @@ if res is not None:
             dh = float(linha["DH_med_m"].iloc[0])
             hz = float(linha["Hz_med_deg"].iloc[0])
             x_est, y_est = coords["P1"]
-            az = math.radians(hz)   # Hz: 0° no norte, sentido horário
+            az = math.radians(hz)
             dx = dh * math.sin(az)
             dy = dh * math.cos(az)
             coords[pv_up] = (x_est + dx, y_est + dy)
             return True
 
-        # tenta posicionar P2 e P3 a partir de P1
         tem_p2 = posicionar_a_partir_de_P1("P2")
         tem_p3 = posicionar_a_partir_de_P1("P3")
 
-        # se não conseguir um deles, não desenha triângulo incompleto
         if not tem_p2 or not tem_p3:
             st.info(
                 "Para desenhar o triângulo, é preciso ter leituras médias "
-                "P1→P2 e P1→P3 (Hz_médio e DH_médio). Verifique a planilha."
+                "P1→P2 e P1→P3 (Hz_médio e DH_médio) na planilha."
             )
         else:
-            # Plot do triângulo P1–P2–P3
             fig, ax = plt.subplots(figsize=(5, 5))
 
             x1, y1 = coords["P1"]
@@ -653,7 +675,6 @@ if res is not None:
             ax.plot([x2, x3], [y2, y3], "-k", linewidth=1.4)
             ax.plot([x1, x3], [y1, y3], "-k", linewidth=1.4)
 
-            # pontos
             for nome, (x, y) in coords.items():
                 cor = "darkred" if nome == "P1" else "navy"
                 ax.scatter(x, y, color=cor, s=45, zorder=3)
@@ -671,7 +692,7 @@ if res is not None:
 st.markdown(
     """
     <p class="footer-text">
-        Versão do app: <code>4.0 — Hz + DH/DN + Ré/Vante + Croqui P1–P2–P3</code>.
+        Versão do app: <code>4.1 — Hz + DH/DN (módulo) + Ré/Vante + Triângulo P1–P2–P3</code>.
     </p>
     """,
     unsafe_allow_html=True,
