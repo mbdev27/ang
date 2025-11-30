@@ -1,6 +1,7 @@
 # app.py
 # Calculadora de Ângulos e Distâncias — UFPE
 # Hz/Z/DH + Ré/Vante + Polígono com azimute de referência + Figuras por série (ordem dinâmica, N vértices)
+# Agora: figuras por série usando DH da própria série para montar a figura geométrica.
 
 import io
 import math
@@ -22,7 +23,7 @@ st.set_page_config(
 
 REQUIRED_COLS = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 
-# (mantido como antes, voltado ao caso clássico P1–P3)
+# Mapa clássico P1–P3 para Ré/Vante (se quiser, depois generalizamos)
 RE_VANTE_MAP: Dict[str, Tuple[str, str]] = {
     "P1": ("P2", "P3"),  # (Ré, Vante)
     "P2": ("P1", "P3"),
@@ -503,7 +504,7 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     st.dataframe(df_ang, use_container_width=True)
 
 
-# ========= NOVO: regra das séries para polígono genérico =========
+# ========= Séries e ordem automática =========
 
 def numerar_series_por_estacao(res_linha: pd.DataFrame) -> pd.DataFrame:
     df = res_linha.copy()
@@ -516,9 +517,6 @@ def detectar_ordem_estacoes(df_uso: pd.DataFrame, minimo: int = 3) -> List[str]:
     for est in df_uso["EST"]:
         if est not in ordem:
             ordem.append(est)
-        if len(ordem) >= minimo:
-            # mínimo é só para garantir triângulo; mas ordem pode ter mais estações depois
-            pass
     return ordem
 
 
@@ -530,10 +528,9 @@ def figuras_por_serie_poligono_generico(
     """
     Gera figuras por série para um polígono com vértices dados por ordem_estacoes.
     Ligações: E1->E2->E3->...->EN->E1.
-    Para cada estação Ei (i>1) usamos a leitura Ei->Ei+1;
-    para EN usamos EN->E1.
-    Usa Hz_med_deg + az_ref (referência: E1->E2 primeira ocorrência) e DH_med_m.
-    Retorna: dict serie -> {coords, df_lados, df_ang, area}
+    Para cada estação Ei, usa a leitura (Hz_med_deg, DH_med_m) da série s.
+    Usa azimute = Hz_med_deg + offset, com offset do azimute de referência E1->E2.
+    DH usado é SEMPRE o DH da SÉRIE.
     """
     if len(ordem_estacoes) < 3:
         return {}
@@ -541,12 +538,12 @@ def figuras_por_serie_poligono_generico(
     E1, E2 = ordem_estacoes[0], ordem_estacoes[1]
     resultados = {}
 
-    # verifica se todas as estações aparecem pelo menos uma vez
+    # verifica se todas as estações aparecem
     est_set = set(res_linha_serie["EST"].unique())
     if not set(ordem_estacoes).issubset(est_set):
         return resultados
 
-    # direção de referência E1->E2 (primeira ocorrência)
+    # direção de referência E1->E2 (primeira ocorrência na tabela de séries)
     linha_ref = res_linha_serie[(res_linha_serie["EST"] == E1) & (res_linha_serie["PV"] == E2)].head(1)
     if linha_ref.empty:
         return resultados
@@ -555,7 +552,7 @@ def figuras_por_serie_poligono_generico(
 
     def linha_para_az_e_dh(linha):
         hz = linha["Hz_med_deg"].iloc[0]
-        dh = linha["DH_med_m"].iloc[0]
+        dh = linha["DH_med_m"].iloc[0]  # <<< AQUI: DH da série
         az = (hz + offset) % 360.0
         return az, dh
 
@@ -564,7 +561,7 @@ def figuras_por_serie_poligono_generico(
     N = len(ordem_estacoes)
 
     for s in range(1, n_series + 1):
-        # para cada estação, pego a linha da série s
+        # para cada estação, pega a linha da série s
         linhas_serie = {}
         falta = False
         for est in ordem_estacoes:
@@ -576,7 +573,6 @@ def figuras_por_serie_poligono_generico(
         if falta:
             continue
 
-        # monta coordenadas
         coords: Dict[str, Tuple[float, float]] = {}
         coords[E1] = (0.0, 0.0)
 
@@ -585,12 +581,11 @@ def figuras_por_serie_poligono_generico(
         de12, dn12 = delta_from_azimuth(az12, dh12)
         coords[E2] = (coords[E1][0] + de12, coords[E1][1] + dn12)
 
-        # demais lados em sequência
+        # demais lados E2->E3->...->EN->E1
         for i in range(1, N):
             est_i = ordem_estacoes[i]
-            est_next = ordem_estacoes[(i + 1) % N]  # volta para E1 no fim
+            est_next = ordem_estacoes[(i + 1) % N]
             if est_i not in coords:
-                # se por algum motivo não tiver coordenada, pula figura
                 falta = True
                 break
             linha_i = linhas_serie[est_i]
@@ -600,23 +595,18 @@ def figuras_por_serie_poligono_generico(
         if falta:
             continue
 
-        # distâncias e ângulos do polígono
-        pontos_ord = ordem_estacoes
-        xs = [coords[e][0] for e in pontos_ord] + [coords[pontos_ord[0]][0]]
-        ys = [coords[e][1] for e in pontos_ord] + [coords[pontos_ord[0]][1]]
-
-        # lados
+        # lados (distância geométrica x DH série)
         lados = []
         dist_geom = []
         dh_series = []
         for i in range(N):
-            a = pontos_ord[i]
-            b = pontos_ord[(i + 1) % N]
+            a = ordem_estacoes[i]
+            b = ordem_estacoes[(i + 1) % N]
             Pa = coords[a]
             Pb = coords[b]
-            d = math.hypot(Pb[0] - Pa[0], Pb[1] - Pa[1])
+            d_geom = math.hypot(Pb[0] - Pa[0], Pb[1] - Pa[1])
             lados.append(f"{a}–{b}")
-            dist_geom.append(round(d, 3))
+            dist_geom.append(round(d_geom, 3))
             dh_series.append(round(linhas_serie[a]["DH_med_m"].iloc[0], 3))
 
         df_lados = pd.DataFrame(
@@ -631,9 +621,9 @@ def figuras_por_serie_poligono_generico(
         angs = []
         verts = []
         for i in range(N):
-            b = pontos_ord[i]
-            a = pontos_ord[(i - 1) % N]
-            c = pontos_ord[(i + 1) % N]
+            b = ordem_estacoes[i]
+            a = ordem_estacoes[(i - 1) % N]
+            c = ordem_estacoes[(i + 1) % N]
             ang = angulo_interno(coords[a], coords[b], coords[c])
             verts.append(b)
             angs.append(round(ang, 4))
@@ -647,14 +637,14 @@ def figuras_por_serie_poligono_generico(
         # área (Shoelace)
         area = 0.0
         for i in range(N):
-            x1, y1 = coords[pontos_ord[i]]
-            x2, y2 = coords[pontos_ord[(i + 1) % N]]
+            x1, y1 = coords[ordem_estacoes[i]]
+            x2, y2 = coords[ordem_estacoes[(i + 1) % N]]
             area += x1 * y2 - x2 * y1
         area = abs(area) / 2.0
 
         resultados[s] = {
             "coords": coords,
-            "ordem": pontos_ord,
+            "ordem": ordem_estacoes,
             "df_lados": df_lados,
             "df_ang": df_ang,
             "area": area,
@@ -664,7 +654,7 @@ def figuras_por_serie_poligono_generico(
 
 
 # ==================== CSS / Cabeçalho / Upload ====================
-# (CSS igual ao anterior — mantido para não alongar mais a resposta)
+
 CUSTOM_CSS = """
 <style>
 body, .stApp { background: radial-gradient(circle at top left,#fcecea 0%,#f9f1f1 28%,#f4f4f4 55%,#eceff1 100%); color:#111827; font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
@@ -728,7 +718,8 @@ def cabecalho_ufpe():
             </div>
             <div class="app-subtitle">
                 Cálculo da média das direções Hz, ângulo vertical (Z), distâncias horizontais,
-                Hz reduzido (Ré/Vante) e coordenadas aproximadas do polígono.
+                Hz reduzido (Ré/Vante), coordenadas aproximadas do polígono
+                e figuras por série.
             </div>
             """,
             unsafe_allow_html=True,
@@ -931,12 +922,12 @@ def secao_calculos(df_uso: pd.DataFrame):
     st.markdown("**Triângulo selecionável com base no polígono médio:**")
     desenhar_poligono_selecionavel(coords_dict)
 
-    # ===== Figuras por série (polígono genérico) =====
+    # ===== Figuras por série (polígono genérico com DH da série) =====
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>5. Figuras por série (sem médias, polígono geral)</span>
+            <span>5. Figuras por série (sem médias, polígono geral com DH da série)</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -946,7 +937,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         Para cada série <code>s</code>, monta-se uma figura usando apenas as leituras
         de índice <code>s</code> de cada estação, seguindo exatamente a ordem em que
         as estações aparecem na tabela de referência (1ª, depois 2ª, 3ª, ..., N).
-        As ligações são: E1→E2→E3→...→EN→E1.
+        As ligações são: E1→E2→E3→...→EN→E1, usando <b>DH da própria série</b>.
         """,
         unsafe_allow_html=True,
     )
@@ -1005,7 +996,7 @@ def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v3.0 — Hz/Z, Ré/Vante, azimute de referência, polígono médio e figuras por série com ordem automática e N vértices.</code>.
+            Versão do app: <code>UFPE_v3.1 — Hz/Z, Ré/Vante, azimute de referência, polígono médio e figuras por série com ordem automática (N vértices) e DH da própria série.</code>.
         </p>
         """,
         unsafe_allow_html=True,
