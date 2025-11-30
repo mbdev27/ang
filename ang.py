@@ -122,12 +122,12 @@ CUSTOM_CSS = """
     background: radial-gradient(circle at top left, #38bdf8 0, #4f46e5 40%, #020617 100%);
 }
 
-/* Tabela de dados */
+/* Tabelas */
 [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
     background-color: rgba(15, 23, 42, 0.92) !important;
 }
 
-/* Código da saída */
+/* Código da saída (se usado) */
 [data-testid="stCodeBlock"] {
     border-radius: 12px;
     border: 1px solid rgba(148, 163, 184, 0.6);
@@ -407,7 +407,7 @@ if uploaded is not None:
             axis=1
         )
 
-        # Distância horizontal PI (usada apenas na saída em texto/CSV)
+        # Distância horizontal PI (usada apenas na saída/CSV)
         results['Dh_PI_m'] = results.apply(
             lambda r: (
                 r['DistanciaInclinada_PI_m'] *
@@ -425,24 +425,20 @@ if uploaded is not None:
         ].mean(axis=1, skipna=True)
         results['AH_med_DMS'] = results['AH_med_deg'].apply(decimal_to_dms)
 
-        # -------------------- Saída em linhas (inclui EST e PV) --------------------
-        linhas_saida = []
-        for _, r in results.iterrows():
-            est = str(r.get('EST', '') or '')
-            pv = str(r.get('PV', '') or '')
-            dh_pd = r.get('Dh_PD_m')
-            dh_pi = r.get('Dh_PI_m')
-            ah_dms = r.get('AH_med_DMS') or ""
+        # -------------------- Tabela de "Cálculos e resultados" --------------------
+        resumo_df = pd.DataFrame({
+            "EST": results["EST"],
+            "PV": results["PV"],
+            "Dh_PD (m)": results["Dh_PD_m"].map(
+                lambda x: f"{x:.3f}" if pd.notna(x) else ""
+            ),
+            "Dh_PI (m)": results["Dh_PI_m"].map(
+                lambda x: f"{x:.3f}" if pd.notna(x) else ""
+            ),
+            "AH_médio (DMS)": results["AH_med_DMS"].fillna(""),
+        })
 
-            dh_pd_s = f"{dh_pd:.3f} m" if pd.notna(dh_pd) else ""
-            dh_pi_s = f"{dh_pi:.3f} m" if pd.notna(dh_pi) else ""
-
-            linhas_saida.append(
-                f"EST: {est}\tPV: {pv}\tDh_PD: {dh_pd_s}\tDh_PI: {dh_pi_s}\tAH_médio: {ah_dms}"
-            )
-
-        st.markdown("**Saída (por linha: EST, PV, Dh_PD, Dh_PI, AH_médio DMS)**")
-        st.code("\n".join(linhas_saida), language="text")
+        st.dataframe(resumo_df, use_container_width=True)
 
         # -------------------- Tabela de conferência -------------------------
         display_df = pd.DataFrame({
@@ -500,7 +496,7 @@ st.markdown(
     <p class="footer-text">
         Observação: para gerar/baixar o modelo Excel (.xlsx) no servidor,
         certifique-se de incluir <code>openpyxl</code> no <code>requirements.txt</code>.<br>
-        Versão do app: <code>1.3</code> — cabeçalho UFPE + campos de identificação do trabalho.
+        Versão do app: <code>1.4</code> — cabeçalho UFPE, resultados em tabela e tabela de conferência.
     </p>
     """,
     unsafe_allow_html=True,
