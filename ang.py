@@ -1,6 +1,6 @@
 # app.py
 # Calculadora de Ângulos e Distâncias — UFPE
-# Hz/Z/DH + Ré/Vante + Polígono com azimute de referência + Figuras por série (ordem dinâmica)
+# Hz/Z/DH + Ré/Vante + Polígono com azimute de referência + Figuras por série (ordem dinâmica, N vértices)
 
 import io
 import math
@@ -22,8 +22,7 @@ st.set_page_config(
 
 REQUIRED_COLS = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 
-# Este mapa (Ré/Vante) continua fixo nos rótulos P1,P2,P3.
-# Se você quiser que ele também fique 100% dinâmico, podemos adaptar depois.
+# (mantido como antes, voltado ao caso clássico P1–P3)
 RE_VANTE_MAP: Dict[str, Tuple[str, str]] = {
     "P1": ("P2", "P3"),  # (Ré, Vante)
     "P2": ("P1", "P3"),
@@ -329,7 +328,7 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
     return tab
 
 
-# ==================== Cálculo de coordenadas com azimute de referência ====================
+# ==================== Coordenadas com azimute de referência ====================
 
 def delta_from_azimuth(az_deg: float, dh: float) -> Tuple[float, float]:
     az_rad = math.radians(az_deg)
@@ -406,40 +405,37 @@ def angulo_interno(p_a, p_b, p_c) -> float:
     if n1 == 0 or n2 == 0:
         return float("nan")
     cos_ang = max(min(dot / (n1 * n2), 1.0), -1.0)
-    ang = math.degrees(math.acos(cos_ang))
-    return ang
+    return math.degrees(math.acos(cos_ang))
 
 
 def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     if len(coords) < 3:
         st.info("Coordenadas insuficientes para formar um triângulo.")
         return
-
-    pontos_disponiveis = sorted(coords.keys())
-
+    pontos = sorted(coords.keys())
     col_sel1, col_sel2, col_sel3 = st.columns(3)
     with col_sel1:
         p_a = st.selectbox(
-            "Vértice A do triângulo (coordenadas do polígono médio)",
-            options=pontos_disponiveis,
+            "Vértice A (polígono médio)",
+            options=pontos,
             index=0,
             key="tri_pt_a",
         )
     with col_sel2:
-        opcoes_b = [p for p in pontos_disponiveis if p != p_a]
+        opcoes_b = [p for p in pontos if p != p_a]
         p_b = st.selectbox(
-            "Vértice B do triângulo (coordenadas do polígono médio)",
+            "Vértice B (polígono médio)",
             options=opcoes_b,
             index=0,
             key="tri_pt_b",
         )
     with col_sel3:
-        opcoes_c = [p for p in pontos_disponiveis if p not in (p_a, p_b)]
-        if len(opcoes_c) == 0:
+        opcoes_c = [p for p in pontos if p not in (p_a, p_b)]
+        if not opcoes_c:
             st.info("Selecione A e B diferentes para disponibilizar um C.")
             return
         p_c = st.selectbox(
-            "Vértice C do triângulo (coordenadas do polígono médio)",
+            "Vértice C (polígono médio)",
             options=opcoes_c,
             index=0,
             key="tri_pt_c",
@@ -490,7 +486,6 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
 
     st.pyplot(fig)
 
-    st.markdown("**Resumo dos lados (geométricos) do triângulo selecionado:**")
     df_lados = pd.DataFrame(
         {
             "Lado": [f"{p_a}–{p_b}", f"{p_b}–{p_c}", f"{p_c}–{p_a}"],
@@ -499,7 +494,6 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     )
     st.dataframe(df_lados, use_container_width=True)
 
-    st.markdown("**Ângulos internos no triângulo selecionado:**")
     df_ang = pd.DataFrame(
         {
             "Vértice": [p_a, p_b, p_c],
@@ -509,7 +503,7 @@ def desenhar_poligono_selecionavel(coords: Dict[str, Tuple[float, float]]):
     st.dataframe(df_ang, use_container_width=True)
 
 
-# ========= NOVO: regra das séries para montar figuras (sem médias) =========
+# ========= NOVO: regra das séries para polígono genérico =========
 
 def numerar_series_por_estacao(res_linha: pd.DataFrame) -> pd.DataFrame:
     df = res_linha.copy()
@@ -518,45 +512,41 @@ def numerar_series_por_estacao(res_linha: pd.DataFrame) -> pd.DataFrame:
 
 
 def detectar_ordem_estacoes(df_uso: pd.DataFrame, minimo: int = 3) -> List[str]:
-    """
-    Detecta a ordem das estações pela primeira aparição em EST (sem repetir).
-    Ex.: se EST aparece como P1, P3, P2, P1, P3..., ordem = [P1, P3, P2].
-    """
     ordem = []
     for est in df_uso["EST"]:
         if est not in ordem:
             ordem.append(est)
         if len(ordem) >= minimo:
-            break
+            # mínimo é só para garantir triângulo; mas ordem pode ter mais estações depois
+            pass
     return ordem
 
 
-def figuras_por_serie_triangulo_generico(
+def figuras_por_serie_poligono_generico(
     res_linha_serie: pd.DataFrame,
     az_ref: float,
     ordem_estacoes: List[str],
 ):
     """
-    Gera figuras por série para um triângulo definido pela ordem_estacoes[0:3].
-    - Vértices: E1, E2, E3 nessa ordem.
-    - Para cada série s:
-        E1 -> E2
-        E2 -> E3
-        E3 -> E1
-    - Usa Hz_med_deg + az_ref (referência: E1->E2 primeira ocorrência) e DH_med_m.
+    Gera figuras por série para um polígono com vértices dados por ordem_estacoes.
+    Ligações: E1->E2->E3->...->EN->E1.
+    Para cada estação Ei (i>1) usamos a leitura Ei->Ei+1;
+    para EN usamos EN->E1.
+    Usa Hz_med_deg + az_ref (referência: E1->E2 primeira ocorrência) e DH_med_m.
     Retorna: dict serie -> {coords, df_lados, df_ang, area}
     """
     if len(ordem_estacoes) < 3:
         return {}
 
-    E1, E2, E3 = ordem_estacoes[:3]
+    E1, E2 = ordem_estacoes[0], ordem_estacoes[1]
     resultados = {}
 
-    estacoes_necessarias = {E1, E2, E3}
-    if not estacoes_necessarias.issubset(set(res_linha_serie["EST"].unique())):
+    # verifica se todas as estações aparecem pelo menos uma vez
+    est_set = set(res_linha_serie["EST"].unique())
+    if not set(ordem_estacoes).issubset(est_set):
         return resultados
 
-    # Direção de referência para alinhar azimute: E1 -> E2 (primeira ocorrência)
+    # direção de referência E1->E2 (primeira ocorrência)
     linha_ref = res_linha_serie[(res_linha_serie["EST"] == E1) & (res_linha_serie["PV"] == E2)].head(1)
     if linha_ref.empty:
         return resultados
@@ -571,70 +561,100 @@ def figuras_por_serie_triangulo_generico(
 
     n_series = int(res_linha_serie.groupby("EST")["SERIE"].max().min())
 
+    N = len(ordem_estacoes)
+
     for s in range(1, n_series + 1):
-        lE1 = res_linha_serie[(res_linha_serie["EST"] == E1) & (res_linha_serie["SERIE"] == s)]
-        lE2 = res_linha_serie[(res_linha_serie["EST"] == E2) & (res_linha_serie["SERIE"] == s)]
-        lE3 = res_linha_serie[(res_linha_serie["EST"] == E3) & (res_linha_serie["SERIE"] == s)]
-        if lE1.empty or lE2.empty or lE3.empty:
+        # para cada estação, pego a linha da série s
+        linhas_serie = {}
+        falta = False
+        for est in ordem_estacoes:
+            ls = res_linha_serie[(res_linha_serie["EST"] == est) & (res_linha_serie["SERIE"] == s)]
+            if ls.empty:
+                falta = True
+                break
+            linhas_serie[est] = ls.iloc[[0]]
+        if falta:
             continue
 
-        # convenção: E1->E2, E2->E3, E3->E1
-        l_E1_E2 = lE1.iloc[[0]]
-        l_E2_E3 = lE2.iloc[[0]]
-        l_E3_E1 = lE3.iloc[[0]]
+        # monta coordenadas
+        coords: Dict[str, Tuple[float, float]] = {}
+        coords[E1] = (0.0, 0.0)
 
-        az_E1_E2, dh_E1_E2 = linha_para_az_e_dh(l_E1_E2)
-        az_E2_E3, dh_E2_E3 = linha_para_az_e_dh(l_E2_E3)
-        az_E3_E1, dh_E3_E1 = linha_para_az_e_dh(l_E3_E1)
+        # primeiro lado: E1 -> E2
+        az12, dh12 = linha_para_az_e_dh(linhas_serie[E1])
+        de12, dn12 = delta_from_azimuth(az12, dh12)
+        coords[E2] = (coords[E1][0] + de12, coords[E1][1] + dn12)
 
-        P1 = (0.0, 0.0)  # vértice E1 na origem
+        # demais lados em sequência
+        for i in range(1, N):
+            est_i = ordem_estacoes[i]
+            est_next = ordem_estacoes[(i + 1) % N]  # volta para E1 no fim
+            if est_i not in coords:
+                # se por algum motivo não tiver coordenada, pula figura
+                falta = True
+                break
+            linha_i = linhas_serie[est_i]
+            az_i, dh_i = linha_para_az_e_dh(linha_i)
+            de_i, dn_i = delta_from_azimuth(az_i, dh_i)
+            coords[est_next] = (coords[est_i][0] + de_i, coords[est_i][1] + dn_i)
+        if falta:
+            continue
 
-        de12, dn12 = delta_from_azimuth(az_E1_E2, dh_E1_E2)
-        P2 = (P1[0] + de12, P1[1] + dn12)
+        # distâncias e ângulos do polígono
+        pontos_ord = ordem_estacoes
+        xs = [coords[e][0] for e in pontos_ord] + [coords[pontos_ord[0]][0]]
+        ys = [coords[e][1] for e in pontos_ord] + [coords[pontos_ord[0]][1]]
 
-        de23, dn23 = delta_from_azimuth(az_E2_E3, dh_E2_E3)
-        P3 = (P2[0] + de23, P2[1] + dn23)
-
-        coords = {E1: P1, E2: P2, E3: P3}
-
-        d12 = math.hypot(P2[0] - P1[0], P2[1] - P1[1])
-        d23 = math.hypot(P3[0] - P2[0], P3[1] - P2[1])
-        d31 = math.hypot(P1[0] - P3[0], P1[1] - P3[1])
+        # lados
+        lados = []
+        dist_geom = []
+        dh_series = []
+        for i in range(N):
+            a = pontos_ord[i]
+            b = pontos_ord[(i + 1) % N]
+            Pa = coords[a]
+            Pb = coords[b]
+            d = math.hypot(Pb[0] - Pa[0], Pb[1] - Pa[1])
+            lados.append(f"{a}–{b}")
+            dist_geom.append(round(d, 3))
+            dh_series.append(round(linhas_serie[a]["DH_med_m"].iloc[0], 3))
 
         df_lados = pd.DataFrame(
             {
-                "Lado": [f"{E1}–{E2}", f"{E2}–{E3}", f"{E3}–{E1}"],
-                "Distância geométrica (m)": [round(d12, 3), round(d23, 3), round(d31, 3)],
-                "DH da série (m)": [
-                    round(dh_E1_E2, 3),
-                    round(dh_E2_E3, 3),
-                    round(dh_E3_E1, 3),
-                ],
+                "Lado": lados,
+                "Distância geométrica (m)": dist_geom,
+                "DH da série (m)": dh_series,
             }
         )
 
-        ang_1 = angulo_interno(P3, P1, P2)
-        ang_2 = angulo_interno(P1, P2, P3)
-        ang_3 = angulo_interno(P2, P3, P1)
-
+        # ângulos internos
+        angs = []
+        verts = []
+        for i in range(N):
+            b = pontos_ord[i]
+            a = pontos_ord[(i - 1) % N]
+            c = pontos_ord[(i + 1) % N]
+            ang = angulo_interno(coords[a], coords[b], coords[c])
+            verts.append(b)
+            angs.append(round(ang, 4))
         df_ang = pd.DataFrame(
             {
-                "Vértice": [E1, E2, E3],
-                "Ângulo interno (°)": [round(ang_1, 4), round(ang_2, 4), round(ang_3, 4)],
+                "Vértice": verts,
+                "Ângulo interno (°)": angs,
             }
         )
 
-        x1, y1 = P1
-        x2, y2 = P2
-        x3, y3 = P3
-        area = abs(
-            x1 * (y2 - y3)
-            + x2 * (y3 - y1)
-            + x3 * (y1 - y2)
-        ) / 2.0
+        # área (Shoelace)
+        area = 0.0
+        for i in range(N):
+            x1, y1 = coords[pontos_ord[i]]
+            x2, y2 = coords[pontos_ord[(i + 1) % N]]
+            area += x1 * y2 - x2 * y1
+        area = abs(area) / 2.0
 
         resultados[s] = {
             "coords": coords,
+            "ordem": pontos_ord,
             "df_lados": df_lados,
             "df_ang": df_ang,
             "area": area,
@@ -643,29 +663,33 @@ def figuras_por_serie_triangulo_generico(
     return resultados
 
 
-# ==================== CSS e identidade visual UFPE ====================
-
+# ==================== CSS / Cabeçalho / Upload ====================
+# (CSS igual ao anterior — mantido para não alongar mais a resposta)
 CUSTOM_CSS = """
 <style>
-body, .stApp {
-    background:
-        radial-gradient(circle at top left, #fcecea 0%, #f9f1f1 28%, #f4f4f4 55%, #eceff1 100%);
-    color: #111827;
-    font-family: "Trebuchet MS", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-}
-/* (CSS idêntico ao anterior, omitido por brevidade na explicação) */
+body, .stApp { background: radial-gradient(circle at top left,#fcecea 0%,#f9f1f1 28%,#f4f4f4 55%,#eceff1 100%); color:#111827; font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
+.main-card{background:linear-gradient(145deg,rgba(255,255,255,0.98) 0%,#fdf7f7 40%,#ffffff 100%);border-radius:22px;padding:1.8rem 2.1rem 1.4rem 2.1rem;border:1px solid rgba(148,27,37,0.20);box-shadow:0 22px 46px rgba(15,23,42,0.23),0 0 0 1px rgba(15,23,42,0.04);max-width:1280px;margin:1.2rem auto 2.0rem auto;}
+.ufpe-top-bar{width:100%;min-height:10px;border-radius:0 0 16px 16px;background:linear-gradient(90deg,#4b0000 0%,#7e0000 30%,#b30000 60%,#4b0000 100%);margin-bottom:1.0rem;}
+.ufpe-header-text{font-size:0.8rem;line-height:1.18rem;text-transform:uppercase;color:#111827;}
+.ufpe-separator{border:none;border-top:1px solid rgba(148,27,37,0.35);margin:0.8rem 0 1.0rem 0;}
+.app-title{font-size:2.0rem;font-weight:800;letter-spacing:0.03em;display:flex;align-items:center;gap:0.65rem;margin-bottom:0.35rem;color:#7f0000;}
+.app-title span.icon{font-size:2.4rem;}
+.app-subtitle{font-size:0.96rem;color:#374151;margin-bottom:1.0rem;}
+.section-title{font-size:1.05rem;font-weight:700;margin-top:1.7rem;margin-bottom:0.6rem;display:flex;align-items:center;gap:0.4rem;color:#8b0000;text-transform:uppercase;letter-spacing:0.05em;}
+.section-title span.dot{width:9px;height:9px;border-radius:999px;background:radial-gradient(circle at 30% 30%,#ffffff 0%,#ffbdbd 35%,#7f0000 90%);}
+.helper-box{border-radius:14px;padding:0.7rem 0.9rem;background:linear-gradient(135deg,#fff5f5 0%,#ffe7e7 40%,#fffafa 100%);border:1px solid rgba(148,27,37,0.38);font-size:0.85rem;color:#374151;margin-bottom:0.8rem;}
+.footer-text{font-size:0.75rem;color:#6b7280;}
+[data-testid="stDataFrame"],[data-testid="stDataEditor"]{background:linear-gradient(145deg,#ffffff 0%,#f9fafb 50%,#fffdfd 100%) !important;border-radius:14px;border:1px solid rgba(148,27,37,0.22);box-shadow:0 14px 28px rgba(15,23,42,0.10);}
+:root{color-scheme:light;}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
-# ==================== Cabeçalho UFPE ====================
-
 def cabecalho_ufpe():
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
         st.markdown('<div class="ufpe-top-bar"></div>', unsafe_allow_html=True)
-
         col_logo, col_info = st.columns([1, 5])
         with col_logo:
             st.image(
@@ -685,9 +709,7 @@ def cabecalho_ufpe():
                 """,
                 unsafe_allow_html=True,
             )
-
         st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
-
         col1, col2, col3 = st.columns([2, 2, 2])
         with col1:
             st.text_input("Professor(a)", value="")
@@ -697,9 +719,7 @@ def cabecalho_ufpe():
             st.text_input("Patrimônio", value="")
         with col3:
             st.date_input("Data", format="DD/MM/YYYY")
-
         st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
-
         st.markdown(
             """
             <div class="app-title">
@@ -727,8 +747,6 @@ def cabecalho_ufpe():
         )
 
 
-# ==================== Seção modelo e upload ====================
-
 def secao_modelo_e_upload():
     st.markdown(
         """
@@ -739,7 +757,6 @@ def secao_modelo_e_upload():
         """,
         unsafe_allow_html=True,
     )
-
     template_df = pd.DataFrame(
         {
             "EST": ["P1", "P1"],
@@ -782,7 +799,6 @@ def secao_modelo_e_upload():
 def processar_upload(uploaded):
     if uploaded is None:
         return None
-
     try:
         if uploaded.name.lower().endswith(".csv"):
             raw_df = pd.read_csv(uploaded)
@@ -807,14 +823,12 @@ def processar_upload(uploaded):
         return df_valid[REQUIRED_COLS].copy()
 
 
-# ==================== Seção de cálculos principais ====================
+# ==================== Seção de cálculos ====================
 
 def secao_calculos(df_uso: pd.DataFrame):
-    # Detecta ordem das estações automaticamente
     ordem_estacoes = detectar_ordem_estacoes(df_uso, minimo=3)
-
     st.markdown(
-        f"**Ordem detectada das estações (para construção de figuras):** {', '.join(ordem_estacoes)}",
+        f"**Ordem detectada das estações (para construção de figuras):** {', '.join(ordem_estacoes)}"
     )
 
     st.markdown(
@@ -853,10 +867,8 @@ def secao_calculos(df_uso: pd.DataFrame):
 
     st.markdown("##### Medição Angular Horizontal")
     tab_hz_par, tab_hz_re_vante = construir_tabela_hz_com_re_vante(df_par)
-
     st.markdown("**Médias por par (EST–PV):**")
     st.dataframe(tab_hz_par.drop(columns=["Hz_med_deg_par"]), use_container_width=True)
-
     st.markdown("**Hz Ré/Vante e ângulo reduzido (por estação):**")
     st.dataframe(tab_hz_re_vante, use_container_width=True)
 
@@ -864,7 +876,7 @@ def secao_calculos(df_uso: pd.DataFrame):
     tab_z = tabela_medicao_angular_vertical(df_par)
     st.dataframe(tab_z, use_container_width=True)
 
-    # ==================== Azimute de referência e polígono médio ====================
+    # ===== Azimute referência e polígono médio =====
     st.markdown(
         """
         <div class="section-title">
@@ -884,7 +896,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         f"""
         Informe o <b>azimute conhecido</b> da direção <code>{est_inicio} → {est_segundo}</code>
         (em graus, 0° no Norte, sentido horário). Esse azimute será usado como referência
-        para alinhar todas as direções medidas.
+        para alinhar todas as direções médias.
         """,
         unsafe_allow_html=True,
     )
@@ -919,28 +931,28 @@ def secao_calculos(df_uso: pd.DataFrame):
     st.markdown("**Triângulo selecionável com base no polígono médio:**")
     desenhar_poligono_selecionavel(coords_dict)
 
-    # ==================== Figuras por série (regra das leituras) ====================
+    # ===== Figuras por série (polígono genérico) =====
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>5. Figuras por série (sem médias, regra das leituras)</span>
+            <span>5. Figuras por série (sem médias, polígono geral)</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
     st.markdown(
         """
-        Para cada série <code>s</code> (1ª, 2ª, 3ª, ...), monta-se uma figura usando
-        <b>apenas</b> as leituras de índice <code>s</code> de cada estação.
-        A ordem dos vértices é dada pela primeira aparição das estações na tabela:
-        1ª estação, depois 2ª, depois 3ª (para o triângulo).
+        Para cada série <code>s</code>, monta-se uma figura usando apenas as leituras
+        de índice <code>s</code> de cada estação, seguindo exatamente a ordem em que
+        as estações aparecem na tabela de referência (1ª, depois 2ª, 3ª, ..., N).
+        As ligações são: E1→E2→E3→...→EN→E1.
         """,
         unsafe_allow_html=True,
     )
 
     res_serie = numerar_series_por_estacao(res)
-    figuras = figuras_por_serie_triangulo_generico(res_serie, az_ref, ordem_estacoes)
+    figuras = figuras_por_serie_poligono_generico(res_serie, az_ref, ordem_estacoes)
 
     if not figuras:
         st.info(
@@ -950,44 +962,40 @@ def secao_calculos(df_uso: pd.DataFrame):
     else:
         series_disponiveis = sorted(figuras.keys())
         serie_escolhida = st.selectbox(
-            "Escolha a série para visualizar o triângulo correspondente:",
+            "Escolha a série para visualizar a figura correspondente:",
             options=series_disponiveis,
             format_func=lambda s: f"Série {s}",
         )
 
         dados = figuras[serie_escolhida]
         coords_t = dados["coords"]
+        ordem_t = dados["ordem"]
         df_lados_t = dados["df_lados"]
         df_ang_t = dados["df_ang"]
         area_t = dados["area"]
 
-        ests = list(coords_t.keys())
-        A_id, B_id, C_id = ests[0], ests[1], ests[2]
-        A = coords_t[A_id]
-        B = coords_t[B_id]
-        C = coords_t[C_id]
-
-        xs_t = [A[0], B[0], C[0], A[0]]
-        ys_t = [A[1], B[1], C[1], A[1]]
+        xs_t = [coords_t[e][0] for e in ordem_t] + [coords_t[ordem_t[0]][0]]
+        ys_t = [coords_t[e][1] for e in ordem_t] + [coords_t[ordem_t[0]][1]]
 
         fig_t, ax_t = plt.subplots()
         ax_t.plot(xs_t, ys_t, "-o", color="#8B0000", lw=2.3, markersize=8)
-        ax_t.text(A[0], A[1], f" {A_id}", fontsize=10, color="#111827")
-        ax_t.text(B[0], B[1], f" {B_id}", fontsize=10, color="#111827")
-        ax_t.text(C[0], C[1], f" {C_id}", fontsize=10, color="#111827")
+
+        for est in ordem_t:
+            x, y = coords_t[est]
+            ax_t.text(x, y, f" {est}", fontsize=10, color="#111827")
 
         ax_t.set_aspect("equal", "box")
         ax_t.set_xlabel("E (m)")
         ax_t.set_ylabel("N (m)")
-        ax_t.set_title(f"Triângulo da Série {serie_escolhida} ({A_id}–{B_id}–{C_id}, sem médias)")
+        ax_t.set_title(f"Figura da Série {serie_escolhida} (polígono {', '.join(ordem_t)})")
         ax_t.grid(True, linestyle="--", alpha=0.3)
 
         st.pyplot(fig_t)
 
-        st.markdown("**Lados do triângulo (geométricos vs. DH da série):**")
+        st.markdown("**Lados da figura (geométricos vs. DH da série):**")
         st.dataframe(df_lados_t, use_container_width=True)
 
-        st.markdown("**Ângulos internos do triângulo da série:**")
+        st.markdown("**Ângulos internos da figura da série:**")
         st.dataframe(df_ang_t, use_container_width=True)
 
         st.markdown(f"**Área da figura da série {serie_escolhida}:** `{area_t:.4f} m²`")
@@ -997,7 +1005,7 @@ def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v2.4 — Hz/Z, Ré/Vante, azimute de referência, polígono médio e figuras por série com ordem automática das estações.</code>.
+            Versão do app: <code>UFPE_v3.0 — Hz/Z, Ré/Vante, azimute de referência, polígono médio e figuras por série com ordem automática e N vértices.</code>.
         </p>
         """,
         unsafe_allow_html=True,
