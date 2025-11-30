@@ -478,8 +478,8 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
         return None
 
     est = est1
-    b = float(r1["DH_med_m"])
-    c = float(r2["DH_med_m"])
+    b = float(r1["DH_med_m"])   # EST–PV1  (ex: P2–P3)
+    c = float(r2["DH_med_m"])   # EST–PV2  (ex: P2–P1)
     hz1 = float(r1["Hz_med_deg"])
     hz2 = float(r2["Hz_med_deg"])
 
@@ -487,13 +487,24 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
     if alpha_deg > 180.0:
         alpha_deg = 360.0 - alpha_deg
 
+    # lado entre PV1 e PV2
     a = math.sqrt(
         b**2 + c**2 - 2 * b * c * math.cos(math.radians(alpha_deg))
     )
 
-    A_int = _angulo_interno(a, b, c)
-    B_int = _angulo_interno(b, a, c)
-    C_int = _angulo_interno(c, a, b)
+    # Associação de lados:
+    # a = PV1–PV2 (P3–P1)
+    # b = EST–PV1 (P2–P3)
+    # c = EST–PV2 (P2–P1)
+    #
+    # Ângulos:
+    # - Em P1 (PV2): oposto ao lado P2–P3 (b)
+    # - Em P2 (EST): oposto ao lado P3–P1 (a)
+    # - Em P3 (PV1): oposto ao lado P2–P1 (c)
+
+    ang_P1 = _angulo_interno(b, c, a)  # vértice em PV2
+    ang_P2 = _angulo_interno(a, b, c)  # vértice em EST
+    ang_P3 = _angulo_interno(c, a, b)  # vértice em PV1
 
     s = (a + b + c) / 2.0
     area = math.sqrt(max(s * (s - a) * (s - b) * (s - c), 0.0))
@@ -506,9 +517,9 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
         "c_EST_PV2": c,
         "a_PV1_PV2": a,
         "alpha_EST_deg": alpha_deg,
-        "ang_EST_deg": A_int,
-        "ang_PV1_deg": B_int,
-        "ang_PV2_deg": C_int,
+        "ang_P1_deg": ang_P1,
+        "ang_P2_deg": ang_P2,
+        "ang_P3_deg": ang_P3,
         "area_m2": area,
     }
 
@@ -517,16 +528,16 @@ def selecionar_linhas_por_estacao_e_conjunto(
     res: pd.DataFrame, estacao_letra: str, conjunto: str
 ) -> Optional[Tuple[int, int]]:
     """
-    Usa apenas a ORDEM das linhas e as combinações EST/PV para definir
-    1ª, 2ª e 3ª leituras para cada estação (A,B,C).
+    Usa apenas a ordem das linhas e as combinações EST/PV
+    para definir 1ª, 2ª e 3ª leituras para cada estação (A,B,C).
 
     - Estação A (P1):
         1ª leitura: EST=P2 e PV in {P3, P1}  (B>C + B>A)
-        2ª e 3ª:    EST=P1 e PV in {P2, P3}  (A>B + A>C), 2º e 3º pares
+        2ª/3ª:      EST=P1 e PV in {P2, P3}  (A>B + A>C)
     - Estação B (P2):
-        leituras:  EST=P2 e PV in {P3, P1} (B>C + B>A), 1º,2º,3º pares
+        leituras:   EST=P2 e PV in {P3, P1}  (B>C + B>A)
     - Estação C (P3):
-        leituras:  EST=P3 e PV in {P1, P2} (C>A + C>B), 1º,2º,3º pares
+        leituras:   EST=P3 e PV in {P1, P2}  (C>A + C>B)
     """
     letra_to_p = {"A": "P1", "B": "P2", "C": "P3"}
     est_ref = letra_to_p.get(estacao_letra)
@@ -554,7 +565,7 @@ def selecionar_linhas_por_estacao_e_conjunto(
     cand = cand.reset_index(drop=True)
     cand["par_id"] = cand.index // 2  # 0,0,1,1,2,2,...
 
-    par_desejado = ordem - 1  # 1ª->0, 2ª->1, 3ª->2
+    par_desejado = ordem - 1
     par = cand[cand["par_id"] == par_desejado]
     if len(par) < 2:
         return None
@@ -563,7 +574,7 @@ def selecionar_linhas_por_estacao_e_conjunto(
     return int(idxs[0]), int(idxs[1])
 
 # =====================================================================
-#  Plotagem do triângulo (formato croqui)
+#  Plotagem do triângulo (croqui em planta)
 # =====================================================================
 
 def plotar_triangulo_info(info):
@@ -616,83 +627,206 @@ def plotar_triangulo_info(info):
 
 CUSTOM_CSS = """
 <style>
-body, .stApp { background: radial-gradient(circle at top left,#fcecea 0%,#f9f1f1 28%,#f4f4f4 55%,#eceff1 100%); color:#111827; font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
-.main-card{background:linear-gradient(145deg,rgba(255,255,255,0.98) 0%,#fdf7f7 40%,#ffffff 100%);border-radius:22px;padding:1.8rem 2.1rem 1.4rem 2.1rem;border:1px solid rgba(148,27,37,0.20);box-shadow:0 22px 46px rgba(15,23,42,0.23),0 0 0 1px rgba(15,23,42,0.04);max-width:1280px;margin:1.2rem auto 2.0rem auto;}
-.ufpe-top-bar{width:100%;min-height:10px;border-radius:0 0 16px 16px;background:linear-gradient(90deg,#4b0000 0%,#7e0000 30%,#b30000 60%,#4b0000 100%);margin-bottom:1.0rem;}
-.ufpe-header-text{font-size:0.8rem;line-height:1.18rem;text-transform:uppercase;color:#111827;}
-.ufpe-separator{border:none;border-top:1px solid rgba(148,27,37,0.35);margin:0.8rem 0 1.0rem 0;}
-.app-title{font-size:2.0rem;font-weight:800;letter-spacing:0.03em;display:flex;align-items:center;gap:0.65rem;margin-bottom:0.35rem;color:#7f0000;}
-.app-title span.icon{font-size:2.4rem;}
-.app-subtitle{font-size:0.96rem;color:#374151;margin-bottom:1.0rem;}
-.section-title{font-size:1.05rem;font-weight:700;margin-top:1.7rem;margin-bottom:0.6rem;display:flex;align-items:center;gap:0.4rem;color:#8b0000;text-transform:uppercase;letter-spacing:0.05em;}
-.section-title span.dot{width:9px;height:9px;border-radius:999px;background:radial-gradient(circle at 30% 30%,#ffffff 0%,#ffbdbd 35%,#7f0000 90%);}
-.helper-box{border-radius:14px;padding:0.7rem 0.9rem;background:linear-gradient(135deg,#fff5f5 0%,#ffe7e7 40%,#fffafa 100%);border:1px solid rgba(148,27,37,0.38);font-size:0.85rem;color:#374151;margin-bottom:0.8rem;}
-.footer-text{font-size:0.75rem;color:#6b7280;}
-[data-testid="stDataFrame"],[data-testid="stDataEditor"]{background:linear-gradient(145deg,#ffffff 0%,#f9fafb 50%,#fffdfd 100%) !important;border-radius:14px;border:1px solid rgba(148,27,37,0.22);box-shadow:0 14px 28px rgba(15,23,42,0.10);}
+body, .stApp {
+  background: radial-gradient(circle at top left,#fcecea 0%,#f9f1f1 28%,#f4f4f4 55%,#eceff1 100%);
+  color:#111827;
+  font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+}
+
+/* Card principal */
+.main-card{
+  background:linear-gradient(145deg,rgba(255,255,255,0.98) 0%,#fdf7f7 40%,#ffffff 100%);
+  border-radius:22px;
+  padding:1.6rem 2.1rem 1.4rem 2.1rem;
+  border:1px solid rgba(148,27,37,0.20);
+  box-shadow:0 22px 46px rgba(15,23,42,0.23),0 0 0 1px rgba(15,23,42,0.04);
+  max-width:1320px;
+  margin:1.2rem auto 2.0rem auto;
+}
+
+/* Cabeçalho expansivo */
+.ufpe-header-band{
+  width:100%;
+  padding:0.6rem 0.9rem 0.3rem 0.9rem;
+  border-radius:18px;
+  background:linear-gradient(90deg,#4b0000 0%,#7e0000 35%,#b30000 70%,#4b0000 100%);
+  color:#f9fafb;
+  margin-bottom:0.4rem;
+}
+.ufpe-header-band h1{
+  font-size:1.1rem;
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  margin:0 0 0.1rem 0;
+}
+.ufpe-header-band h2{
+  font-size:0.90rem;
+  margin:0;
+}
+.ufpe-header-band h3{
+  font-size:0.85rem;
+  margin:0.08rem 0 0 0;
+}
+
+/* Linha com curso / disciplina */
+.ufpe-header-subline{
+  font-size:0.80rem;
+  margin-top:0.2rem;
+  display:flex;
+  justify-content:space-between;
+  gap:1.2rem;
+  color:#111827;
+}
+
+/* Caixa dos campos preenchíveis */
+.ufpe-form-box{
+  margin-top:0.5rem;
+  padding:0.4rem 0.9rem 0.2rem 0.9rem;
+  background:#fff;
+  border-radius:16px;
+  border:1px solid rgba(148,27,37,0.25);
+}
+
+/* Títulos de seção */
+.section-title{
+  font-size:1.05rem;
+  font-weight:700;
+  margin-top:1.7rem;
+  margin-bottom:0.6rem;
+  display:flex;
+  align-items:center;
+  gap:0.4rem;
+  color:#8b0000;
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+}
+.section-title span.dot{
+  width:9px;
+  height:9px;
+  border-radius:999px;
+  background:radial-gradient(circle at 30% 30%,#ffffff 0%,#ffbdbd 35%,#7f0000 90%);
+}
+
+/* Quadros auxiliares */
+.helper-box{
+  border-radius:14px;
+  padding:0.7rem 0.9rem;
+  background:linear-gradient(135deg,#fff5f5 0%,#ffe7e7 40%,#fffafa 100%);
+  border:1px solid rgba(148,27,37,0.38);
+  font-size:0.85rem;
+  color:#374151;
+  margin-bottom:0.8rem;
+}
+
+/* Estilo das tabelas */
+[data-testid="stDataFrame"],[data-testid="stDataEditor"]{
+  background:linear-gradient(145deg,#ffffff 0%,#f9fafb 50%,#fffdfd 100%) !important;
+  border-radius:14px;
+  border:1px solid rgba(148,27,37,0.22);
+  box-shadow:0 14px 28px rgba(15,23,42,0.10);
+}
+
+/* Botões em vermelho/branco, texto preto */
+.stButton>button {
+  background: #b30000;
+  color: #111827;
+  border-radius: 999px;
+  border: 1px solid #7f0000;
+  padding: 0.4rem 1.1rem;
+  font-weight: 600;
+}
+.stButton>button:hover {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #b30000;
+}
+
+/* Footer */
+.footer-text{
+  font-size:0.75rem;
+  color:#6b7280;
+}
+
 :root{color-scheme:light;}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+# =====================================================================
+#  Cabeçalho
+# =====================================================================
+
 def cabecalho_ufpe():
     with st.container():
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        st.markdown('<div class="ufpe-top-bar"></div>', unsafe_allow_html=True)
-        col_logo, col_info = st.columns([1, 5])
-        with col_logo:
-            st.image(
-                "https://upload.wikimedia.org/wikipedia/commons/8/85/Bras%C3%A3o_da_UFPE.png",
-                width=95,
-            )
-        with col_info:
+
+        col_full = st.columns([1])[0]
+        with col_full:
             st.markdown(
                 """
-                <div class="ufpe-header-text">
-                    <div><strong>UNIVERSIDADE FEDERAL DE PERNAMBUCO</strong></div>
-                    <div>DECART — Departamento de Engenharia Cartográfica</div>
-                    <div>LATOP — Laboratório de Topografia</div>
-                    <div>Curso: <strong>Engenharia Cartográfica e Agrimensura</strong></div>
-                    <div>Disciplina: <strong>Equipamentos de Medição</strong></div>
+                <div class="ufpe-header-band">
+                    <h1>UNIVERSIDADE FEDERAL DE PERNAMBUCO</h1>
+                    <h2>DECART — Departamento de Engenharia Cartográfica</h2>
+                    <h3>LATOP — Laboratório de Topografia</h3>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-        st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([2, 2, 2])
-        with col1:
-            st.text_input("Professor(a)", value="")
-            st.text_input("Local", value="")
-        with col2:
-            st.text_input("Equipamento", value="")
-            st.text_input("Patrimônio", value="")
-        with col3:
-            st.date_input("Data", format="DD/MM/YYYY")
-        st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="app-title">
-                <span class="icon">📐</span>
-                <span>Calculadora de Ângulos e Distâncias</span>
-            </div>
-            <div class="app-subtitle">
-                Médias das direções horizontais (Hz) e medição angular vertical/zenital
-                seguindo os modelos dos exemplos de sala (Método das Direções).
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            """
-            <div class="helper-box">
-                <b>Modelo esperado de planilha:</b><br>
-                Colunas: <code>EST</code>, <code>PV</code>, <code>SEQ</code>,
-                <code>Hz_PD</code>, <code>Hz_PI</code>,
-                <code>Z_PD</code>, <code>Z_PI</code>,
-                <code>DI_PD</code>, <code>DI_PI</code>.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+
+            st.markdown(
+                """
+                <div class="ufpe-header-subline">
+                    <div><b>Curso:</b> Engenharia Cartográfica e Agrimensura</div>
+                    <div><b>Disciplina:</b> Equipamentos de Medição</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # Caixa com os campos preenchíveis alinhados como na folha
+            st.markdown('<div class="ufpe-form-box">', unsafe_allow_html=True)
+            c1, c2, c3 = st.columns([2.3, 2.3, 1.6])
+            with c1:
+                st.text_input("PROFESSOR(A):", value="")
+                st.text_input("LOCAL:", value="")
+            with c2:
+                st.text_input("EQUIPAMENTO:", value="")
+                st.text_input("PATRIMÔNIO:", value="")
+            with c3:
+                st.date_input("DATA:", format="DD/MM/YYYY")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            st.markdown(
+                """
+                <div style="margin-top:0.8rem;">
+                    <span style="font-size:1.9rem;font-weight:800;color:#7f0000;letter-spacing:0.04em;">
+                        CALCULADORA DE ÂNGULOS E DISTÂNCIAS
+                    </span>
+                    <div style="font-size:0.95rem;color:#374151;margin-top:0.2rem;">
+                        Método das Direções – médias de Hz, medição angular vertical/zenital
+                        e representação em planta do triângulo formado pelos pontos P1, P2 e P3.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            st.markdown(
+                """
+                <div class="helper-box" style="margin-top:0.6rem;">
+                    <b>Modelo esperado de planilha:</b><br>
+                    Colunas: <code>EST</code>, <code>PV</code>, <code>SEQ</code>,
+                    <code>Hz_PD</code>, <code>Hz_PI</code>,
+                    <code>Z_PD</code>, <code>Z_PI</code>,
+                    <code>DI_PD</code>, <code>DI_PI</code>.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+# =====================================================================
+#  Upload / modelo
+# =====================================================================
 
 def secao_modelo_e_upload():
     st.markdown(
@@ -771,6 +905,10 @@ def processar_upload(uploaded):
         cols_use = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
         return df_valid[cols_use].copy()
 
+# =====================================================================
+#  Seções de cálculo e triângulo
+# =====================================================================
+
 def secao_calculos(df_uso: pd.DataFrame):
     st.markdown(
         """
@@ -809,7 +947,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>4. Medição Angular Horizontal (modelo do Exemplo 1)</span>
+            <span>4. Medição Angular Horizontal</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -821,7 +959,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>5. Medição Angular Vertical / Zenital (modelo do Exemplo 2)</span>
+            <span>5. Medição Angular Vertical / Zenital</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -833,7 +971,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>6. Distâncias médias horizontais simétricas (diagnóstico)</span>
+            <span>6. Distâncias médias horizontais simétricas</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -858,7 +996,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>8. Triângulo selecionado (conjunto automático de medições)</span>
+            <span>8. TRIÂNGULO SELECIONADO (CONJUNTO AUTOMÁTICO DE MEDIÇÕES)</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -878,6 +1016,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         "para formar o triângulo, conforme as regras definidas para cada estação."
     )
 
+    info = None
     if st.button("Gerar triângulo"):
         pares = selecionar_linhas_por_estacao_e_conjunto(res, estacao_op, conjunto_op)
         if pares is None:
@@ -911,25 +1050,133 @@ def secao_calculos(df_uso: pd.DataFrame):
                     )
                     st.markdown("**Ângulos internos:**")
                     st.markdown(
-                        f"- Em {est}: `{decimal_to_dms(info['ang_EST_deg'])}`\n"
-                        f"- Em {pv1}: `{decimal_to_dms(info['ang_PV1_deg'])}`\n"
-                        f"- Em {pv2}: `{decimal_to_dms(info['ang_PV2_deg'])}`"
+                        f"- Em P1: `{decimal_to_dms(info['ang_P1_deg'])}`\n"
+                        f"- Em P2: `{decimal_to_dms(info['ang_P2_deg'])}`\n"
+                        f"- Em P3: `{decimal_to_dms(info['ang_P3_deg'])}`"
                     )
                     st.markdown(
                         f"**Área do triângulo:** `{info['area_m2']:.3f}` m²"
                     )
+
+                    # Quadro explicando o cálculo geométrico
+                    st.markdown(
+                        """
+                        <div class="helper-box" style="margin-top:0.7rem;">
+                        <b>Como a figura geométrica foi calculada:</b><br>
+                        • A partir das leituras na estação escolhida, o programa obteve as distâncias horizontais médias
+                        <i>DH</i> para os lados EST–PV1 e EST–PV2.<br>
+                        • Com as direções horizontais médias (<i>Hz</i>) desses dois alinhamentos, foi calculado o ângulo
+                        interno na estação (diferença de direções), reduzido para o intervalo [0°, 180°].<br>
+                        • Conhecendo dois lados e o ângulo entre eles, a terceira distância (entre PV1 e PV2) foi obtida
+                        pela Lei dos Cossenos:<br>
+                        &nbsp;&nbsp;<code>a² = b² + c² − 2·b·c·cos(α)</code>, onde:
+                        <ul style="margin-top:0.1rem;margin-bottom:0.2rem;">
+                          <li><code>b</code> = distância média EST–PV1</li>
+                          <li><code>c</code> = distância média EST–PV2</li>
+                          <li><code>α</code> = diferença entre as direções horizontais médias de EST–PV1 e EST–PV2</li>
+                          <li><code>a</code> = distância entre PV1 e PV2</li>
+                        </ul>
+                        • Os ângulos internos em P1, P2 e P3 foram calculados novamente pela Lei dos Cossenos,
+                        agora usando os três lados do triângulo.<br>
+                        • A área do triângulo foi obtida pela fórmula de Heron:<br>
+                        &nbsp;&nbsp;<code>s = (a + b + c)/2</code>,<br>
+                        &nbsp;&nbsp;<code>Área = √[ s·(s − a)·(s − b)·(s − c) ]</code>.
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
                 with col2:
                     plotar_triangulo_info(info)
 
-def rodape():
+    return info  # para possível uso no PDF
+
+# =====================================================================
+#  Rodapé e exportação em PDF
+# =====================================================================
+
+def gerar_html_para_pdf(info_triangulo):
+    if info_triangulo is None:
+        tri_block = "<p>Nenhum triângulo foi gerado nesta execução.</p>"
+    else:
+        tri_block = f"""
+        <h3>Resumo do triângulo</h3>
+        <ul>
+          <li>Lados:
+            <ul>
+              <li>EST–PV1: {info_triangulo['b_EST_PV1']:.3f} m</li>
+              <li>EST–PV2: {info_triangulo['c_EST_PV2']:.3f} m</li>
+              <li>PV1–PV2: {info_triangulo['a_PV1_PV2']:.3f} m</li>
+            </ul>
+          </li>
+          <li>Ângulos internos:
+            <ul>
+              <li>Em P1: {decimal_to_dms(info_triangulo['ang_P1_deg'])}</li>
+              <li>Em P2: {decimal_to_dms(info_triangulo['ang_P2_deg'])}</li>
+              <li>Em P3: {decimal_to_dms(info_triangulo['ang_P3_deg'])}</li>
+            </ul>
+          </li>
+          <li>Área: {info_triangulo['area_m2']:.3f} m²</li>
+        </ul>
+        """
+
+    html = f"""
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Relatório – Calculadora de Ângulos e Distâncias</title>
+        <style>
+          body {{ font-family: Arial, sans-serif; margin: 24px; }}
+          h1,h2,h3 {{ color:#7f0000; }}
+          ul {{ margin-top:4px; }}
+        </style>
+      </head>
+      <body>
+        <h1>Calculadora de Ângulos e Distâncias – UFPE</h1>
+        <h2>Resumo do triângulo gerado</h2>
+        {tri_block}
+      </body>
+    </html>
+    """
+    return html
+
+
+def rodape(info_triangulo):
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v11.1 — seleção automática de conjuntos de leituras por estação (A,B,C) e triângulo em planta.</code>.
+            Versão do app: <code>UFPE_v12 — cabeçalho expansivo, ângulos corrigidos,
+            quadro explicativo do triângulo e exportação simples para PDF.</code>.
         </p>
         """,
         unsafe_allow_html=True,
     )
+
+    # Exportação simples para PDF (HTML básico)
+    st.markdown("### Download em PDF (resumo do triângulo)")
+    st.markdown(
+        "Gera um PDF simples com o resumo do triângulo calculado nesta execução."
+    )
+    if st.button("📄 Baixar PDF do triângulo"):
+        try:
+            import pdfkit  # precisa estar instalado no ambiente
+
+            html = gerar_html_para_pdf(info_triangulo)
+            pdf_bytes = pdfkit.from_string(html, False)
+            st.download_button(
+                "Download PDF",
+                data=pdf_bytes,
+                file_name="relatorio_triangulo_ufpe.pdf",
+                mime="application/pdf",
+            )
+        except Exception as e:
+            st.error(
+                "Não foi possível gerar o PDF neste ambiente. "
+                "Se estiver rodando localmente, verifique se o pacote "
+                "<code>pdfkit</code> e o executável <code>wkhtmltopdf</code> "
+                "estão instalados. Erro: " + str(e)
+            )
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =====================================================================
@@ -940,7 +1187,8 @@ cabecalho_ufpe()
 uploaded = secao_modelo_e_upload()
 df_uso = processar_upload(uploaded)
 
+tri_info = None
 if df_uso is not None:
-    secao_calculos(df_uso)
+    tri_info = secao_calculos(df_uso)
 
-rodape()
+rodape(tri_info)
