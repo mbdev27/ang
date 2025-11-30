@@ -1,17 +1,18 @@
 # app.py
-# Média das Direções (Hz) + Z + DH/DN - UFPE (versão arquivo único)
+# Calculadora de Ângulos e Distâncias — UFPE (Hz/Z/DH + Ré/Vante + Polígono)
 
 import io
 import math
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import numpy as np
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 
 # ==================== Config página ====================
 st.set_page_config(
-    page_title="Média das Direções (Hz) — Estação Total | UFPE",
+    page_title="Calculadora de Ângulos e Distâncias | UFPE",
     layout="wide",
     page_icon="📐",
 )
@@ -19,6 +20,14 @@ st.set_page_config(
 # ==================== Funções auxiliares ====================
 
 REQUIRED_COLS = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
+
+# Convenção implícita do seu calcula_poligono.py
+# (qual ponto é Ré, qual é Vante, por estação)
+RE_VANTE_MAP: Dict[str, Tuple[str, str]] = {
+    "P1": ("P2", "P3"),  # (Ré, Vante)
+    "P2": ("P1", "P3"),
+    "P3": ("P1", "P2"),
+}
 
 
 def parse_angle_to_decimal(value: str) -> float:
@@ -164,10 +173,7 @@ def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
 
 def validar_dataframe(df_original: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     """
-    Normaliza colunas e verifica:
-      - Presença de colunas obrigatórias.
-      - Se Hz/Z/DI são conversíveis para ângulo/float.
-    Retorna (df_normalizado, lista_de_erros).
+    Normaliza colunas e verifica colunas obrigatórias + campos válidos.
     """
     erros: List[str] = []
     df = normalizar_colunas(df_original)
@@ -261,10 +267,7 @@ def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
 
 def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
     """
-    Agrega linha a linha em um DataFrame por par EST–PV:
-      - Hz/Z médios com média vetorial.
-      - DI médias aritméticas.
-      - DH/DN médios derivados.
+    Agrega em um DataFrame por par EST–PV.
     """
 
     def agg_par(df_group: pd.DataFrame) -> pd.Series:
@@ -312,40 +315,75 @@ def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
     return df_par
 
 
-def tabela_medicao_angular_horizontal(df_par: pd.DataFrame) -> pd.DataFrame:
+def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> pd.DataFrame:
     """
-    Tabela no formato do slide:
-    'Medição Angular Horizontal'
-    Colunas: EST, PV, Hz PD, Hz PI, Hz Médio, Hz Reduzido, Média das Séries.
+    Constrói tabela Horizontal com:
+      EST, PV, Hz_PD, Hz_PI, Hz_Médio,
+      Hz_Ré, Hz_Vante, α (ré → vante)
+    usando RE_VANTE_MAP por estação.
     """
+    # Base: Hz médios por par
     hz_pd_med_dms = df_par["Hz_PD_med_deg"].apply(decimal_to_dms)
     hz_pi_med_dms = df_par["Hz_PI_med_deg"].apply(decimal_to_dms)
     hz_med_dms = df_par["Hz_med_deg_par"].apply(decimal_to_dms)
 
-    tab = pd.DataFrame(
+    base = pd.DataFrame(
         {
             "EST": df_par["EST"],
             "PV": df_par["PV"],
-            "Hz PD": hz_pd_med_dms,
-            "Hz PI": hz_pi_med_dms,
-            "Hz Médio": hz_med_dms,
-            "Hz Reduzido": hz_med_dms,       # depois podemos aplicar Ré/Vante aqui
-            "Média das Séries": hz_med_dms,  # média das séries PD/PI
+            "Hz PD (médio)": hz_pd_med_dms,
+            "Hz PI (médio)": hz_pi_med_dms,
+            "Hz Médio (PD/PI)": hz_med_dms,
+            "Hz_med_deg_par": df_par["Hz_med_deg_par"],
         }
     )
-    return tab
+
+    # Agora montamos a tabela de Ré/Vante por estação
+    rows_re_vante = []
+
+    for est, (pv_re, pv_vante) in RE_VANTE_MAP.items():
+        sub_est = base[base["EST"] == est].copy()
+        if sub_est.empty:
+            continue
+
+        hz_re_s = sub_est.loc[sub_est["PV"] == pv_re, "Hz_med_deg_par"]
+        hz_va_s = sub_est.loc[sub_est["PV"] == pv_vante, "Hz_med_deg_par"]
+        if len(hz_re_s) == 0 or len(hz_va_s) == 0:
+            continue
+
+        hz_re = hz_re_s.iloc[0]
+        hz_va = hz_va_s.iloc[0]
+        alpha = hz_va - hz_re
+        alpha = (alpha + 360.0) % 360.0
+
+        rows_re_vante.append(
+            {
+                "EST": est,
+                "PV_Ré": pv_re,
+                "PV_Vante": pv_vante,
+                "Hz_Ré (deg)": hz_re,
+                "Hz_Vante (deg)": hz_va,
+                "Hz_Ré (DMS)": decimal_to_dms(hz_re),
+                "Hz_Vante (DMS)": decimal_to_dms(hz_va),
+                "α (deg)": alpha,
+                "α (DMS)": decimal_to_dms(alpha),
+            }
+        )
+
+    df_hz_re_vante = pd.DataFrame(rows_re_vante)
+
+    # Juntamos as duas visões: por par e por estação (Ré/Vante)
+    return base, df_hz_re_vante
 
 
 def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
     """
-    Tabela no formato do slide:
-    'Medição Angular Vertical/Zenital'
-    Colunas: EST, PV, Z PD, Z PI, Z Corrigido, Média das Séries.
+    Tabela Vertical:
+    EST, PV, Z_PD, Z_PI, Z Corrigido, Média das Séries.
     Usa: Z = (Z_PD_med - Z_PI_med) / 2 + 180°
     """
     z_pd_med = df_par["Z_PD_med_deg"]
     z_pi_med = df_par["Z_PI_med_deg"]
-
     z_corr_deg = (z_pd_med - z_pi_med) / 2.0 + 180.0
 
     z_pd_med_dms = z_pd_med.apply(decimal_to_dms)
@@ -356,13 +394,113 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
         {
             "EST": df_par["EST"],
             "PV": df_par["PV"],
-            "Z PD": z_pd_med_dms,
-            "Z PI": z_pi_med_dms,
+            "Z PD (médio)": z_pd_med_dms,
+            "Z PI (médio)": z_pi_med_dms,
             "Z Corrigido": z_corr_dms,
             "Média das Séries": z_corr_dms,
         }
     )
     return tab
+
+
+# ---------- Cálculo de coordenadas (polígono) a partir de df_par ----------
+
+def delta_from_azimuth(az_deg: float, dh: float) -> Tuple[float, float]:
+    """
+    ΔE = Dh * sin(az), ΔN = Dh * cos(az)
+    az em graus a partir do Norte (0°), sentido horário.
+    """
+    az_rad = math.radians(az_deg)
+    de = dh * math.sin(az_rad)
+    dn = dh * math.cos(az_rad)
+    return de, dn
+
+
+def calcular_coordenadas(df_par: pd.DataFrame) -> pd.DataFrame:
+    """
+    Usa Hz_med_deg_par como se fossem azimutes (graus 0..360) e DH_med_m_par
+    para calcular as coordenadas aproximadas dos pontos P1, P2, P3.
+    Assume P1 = (0,0) e propaga pelas observações.
+    """
+    coords: Dict[str, Tuple[float, float]] = {}
+    coords["P1"] = (0.0, 0.0)  # origem
+
+    # Monta um DF auxiliar com azimute e Dh médio
+    aux_rows = []
+    for _, r in df_par.iterrows():
+        est = str(r["EST"])
+        pv = str(r["PV"])
+        az = r["Hz_med_deg_par"]   # assumindo Hz médio como azimute
+        dh = r["DH_med_m_par"]     # distância horizontal média
+        if math.isnan(az) or math.isnan(dh):
+            continue
+        aux_rows.append({"EST": est, "PV": pv, "az_deg": az, "Dh_m": dh})
+
+    aux_df = pd.DataFrame(aux_rows)
+
+    # Propaga iterativamente
+    max_iters = 20
+    for _ in range(max_iters):
+        changed = False
+        for _, row in aux_df.iterrows():
+            est = row["EST"]
+            pv = row["PV"]
+            az = row["az_deg"]
+            dh = row["Dh_m"]
+            if est in coords and pv not in coords:
+                de, dn = delta_from_azimuth(az, dh)
+                e0, n0 = coords[est]
+                coords[pv] = (e0 + de, n0 + dn)
+                changed = True
+            elif pv in coords and est not in coords:
+                de, dn = delta_from_azimuth(az, dh)
+                e1, n1 = coords[pv]
+                coords[est] = (e1 - de, n1 - dn)
+                changed = True
+        if not changed:
+            break
+
+    # Monta DataFrame de coordenadas finais
+    rows = []
+    for pt, (e, n) in coords.items():
+        rows.append({"Ponto": pt, "E (m)": round(e, 3), "N (m)": round(n, 3)})
+
+    return pd.DataFrame(rows), coords
+
+
+def desenhar_poligono(coords: Dict[str, Tuple[float, float]]):
+    """
+    Desenha o triângulo P1–P2–P3 (se existirem) a partir de coords.
+    """
+    pts_ordem = ["P1", "P2", "P3", "P1"]
+    xs = []
+    ys = []
+    labels = []
+
+    for p in pts_ordem:
+        if p in coords:
+            e, n = coords[p]
+            xs.append(e)
+            ys.append(n)
+            labels.append(p)
+
+    if len(xs) < 2:
+        st.info("Coordenadas insuficientes para desenhar o polígono.")
+        return
+
+    fig, ax = plt.subplots()
+    ax.plot(xs, ys, "-o", color="#990000", lw=2, markersize=8)
+
+    for (x, y, lab) in zip(xs, ys, labels):
+        ax.text(x, y, f" {lab}", fontsize=10, color="#111827")
+
+    ax.set_aspect("equal", "box")
+    ax.set_xlabel("E (m)")
+    ax.set_ylabel("N (m)")
+    ax.set_title("Polígono aproximado P1–P2–P3")
+    ax.grid(True, linestyle="--", alpha=0.3)
+
+    st.pyplot(fig)
 
 
 # ==================== CSS e layout visual UFPE ====================
@@ -501,16 +639,30 @@ def cabecalho_ufpe():
                 unsafe_allow_html=True,
             )
 
+        # Linha com campos: Professor, Local, Equipamento, Data, Patrimônio
         st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
 
+        col1, col2, col3 = st.columns([2, 2, 2])
+        with col1:
+            prof = st.text_input("Professor(a)", value="")
+            local = st.text_input("Local", value="")
+        with col2:
+            equip = st.text_input("Equipamento", value="")
+            patrimonio = st.text_input("Patrimônio", value="")
+        with col3:
+            data_campo = st.date_input("Data", format="DD/MM/YYYY")
+
+        st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
+
+        # Título do app
         st.markdown(
             """
             <div class="app-title">
                 <span class="icon">📐</span>
-                <span>Média das Direções (Hz) — Estação Total</span>
+                <span>Calculadora de Ângulos e Distâncias</span>
             </div>
             <div class="app-subtitle">
-                Cálculo da média das direções Hz e do ângulo vertical (Z) por séries PD/PI.
+                Cálculo da média das direções Hz, ângulo vertical (Z), distâncias horizontais e coordenadas aproximadas do polígono.
             </div>
             """,
             unsafe_allow_html=True,
@@ -542,14 +694,14 @@ def secao_modelo_e_upload():
 
     template_df = pd.DataFrame(
         {
-            "EST": ["A", "A"],
-            "PV": ["B", "C"],
-            "Hz_PD": ["00°00'00\"", "18°58'22\""],
-            "Hz_PI": ["179°59'48\"", "198°58'14\""],
-            "Z_PD": ["90°51'08\"", "90°51'25\""],
-            "Z_PI": ["269°08'52\"", "269°08'33\""],
-            "DI_PD": [10.0, 12.0],
-            "DI_PI": [10.0, 12.0],
+            "EST": ["P1", "P1"],
+            "PV": ["P2", "P3"],
+            "Hz_PD": ["145°47'33\"", "167°29'03\""],
+            "Hz_PI": ["325°47'32\"", "347°29'22\""],
+            "Z_PD": ["89°48'20\"", "89°36'31\""],
+            "Z_PI": ["270°12'00\"", "270°23'32\""],
+            "DI_PD": [25.365, 26.285],
+            "DI_PI": [25.365, 26.285],
         }
     )
 
@@ -613,7 +765,7 @@ def secao_calculos(df_uso: pd.DataFrame):
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>3. Medições Angulares Horizontal e Vertical (médias por par)</span>
+            <span>3. Cálculos de Hz, Z e distâncias (linha a linha e por par)</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -640,7 +792,7 @@ def secao_calculos(df_uso: pd.DataFrame):
     # Formata DH com vírgula e 3 casas decimais
     for c in ["DH_PD_m", "DH_PI_m", "DH_med_m"]:
         df_linha[c] = df_linha[c].apply(
-            lambda x: f"{x:.3f}".replace(".", ".") if pd.notna(x) else ""
+            lambda x: f"{x:.3f}".replace(".", ",") if pd.notna(x) else ""
         )
 
     st.dataframe(df_linha, use_container_width=True)
@@ -648,7 +800,7 @@ def secao_calculos(df_uso: pd.DataFrame):
     # Agregado por par EST–PV
     df_par = agregar_por_par(res)
 
-    # Tabela Horizontal
+    # Tabela Horizontal com Ré/Vante
     st.markdown("##### Medição Angular Horizontal")
     st.markdown(
         """
@@ -668,8 +820,16 @@ def secao_calculos(df_uso: pd.DataFrame):
         """,
         unsafe_allow_html=True,
     )
-    tab_hz = tabela_medicao_angular_horizontal(df_par)
-    st.dataframe(tab_hz, use_container_width=True)
+
+    tab_hz_par, tab_hz_re_vante = construir_tabela_hz_com_re_vante(df_par)
+
+    st.markdown("**Médias por par (EST–PV):**")
+    st.dataframe(
+        tab_hz_par.drop(columns=["Hz_med_deg_par"]), use_container_width=True
+    )
+
+    st.markdown("**Hz Ré/Vante e ângulo reduzido (por estação):**")
+    st.dataframe(tab_hz_re_vante, use_container_width=True)
 
     # Tabela Vertical
     st.markdown("##### Medição Angular Vertical/Zenital")
@@ -685,12 +845,30 @@ def secao_calculos(df_uso: pd.DataFrame):
     tab_z = tabela_medicao_angular_vertical(df_par)
     st.dataframe(tab_z, use_container_width=True)
 
+    # Seção de coordenadas e polígono
+    st.markdown(
+        """
+        <div class="section-title">
+            <span class="dot"></span>
+            <span>4. Coordenadas aproximadas dos pontos e polígono P1–P2–P3</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    df_coords, coords_dict = calcular_coordenadas(df_par)
+    st.markdown("**Coordenadas aproximadas (origem em P1 = 0,0):**")
+    st.dataframe(df_coords, use_container_width=True)
+
+    st.markdown("**Polígono aproximado P1–P2–P3:**")
+    desenhar_poligono(coords_dict)
+
 
 def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>único_arquivo_1.2 — Tabelas no formato do slide (Hz / Z), DMS com segundos inteiros, DH com 3 casas, fórmulas em HTML.</code>.
+            Versão do app: <code>UFPE_v2.0 — Hz/Z, Ré/Vante, coordenadas e polígono com identidade visual UFPE.</code>.
         </p>
         """,
         unsafe_allow_html=True,
