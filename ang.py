@@ -651,26 +651,22 @@ def secao_calculos(df_uso: pd.DataFrame):
     # Tabela Horizontal
     st.markdown("##### Medição Angular Horizontal")
     st.markdown(
-        r"""
-**Fórmulas utilizadas (Hz médio e Hz reduzido)**  
-
-Média das direções (por série PD/PI):  
-
-\[
-Hz = \frac{Hz_{PD} + Hz_{PI}}{2} \pm 90^\circ
-\]
-
-com:
-- **+** se \(Hz_{PD} > Hz_{PI}\)  
-- **−** se \(Hz_{PD} < Hz_{PI}\)
-
-Cálculo do ângulo entre duas direções (redução entre Ré e Vante):  
-
-\[
-\alpha = Hz_{\text{Vante}} - Hz_{\text{Ré}}
-\]
-""",
-        unsafe_allow_html=False,
+        """
+        <b>Fórmulas utilizadas (Hz médio e Hz reduzido)</b><br><br>
+        Média das direções (por série PD/PI):<br>
+        <span style="font-family: 'DejaVu Sans Mono', monospace;">
+        Hz = ( Hz<sub>PD</sub> + Hz<sub>PI</sub> ) / 2 &plusmn; 90&deg;
+        </span>
+        <br><br>
+        com:<br>
+        &nbsp;&nbsp;&bull; + se Hz<sub>PD</sub> &gt; Hz<sub>PI</sub><br>
+        &nbsp;&nbsp;&bull; &minus; se Hz<sub>PD</sub> &lt; Hz<sub>PI</sub><br><br>
+        Cálculo do ângulo entre duas direções (redução entre Ré e Vante):<br>
+        <span style="font-family: 'DejaVu Sans Mono', monospace;">
+        &alpha; = Hz<sub>Vante</sub> &minus; Hz<sub>R&eacute;</sub>
+        </span>
+        """,
+        unsafe_allow_html=True,
     )
     tab_hz = tabela_medicao_angular_horizontal(df_par)
     st.dataframe(tab_hz, use_container_width=True)
@@ -678,14 +674,13 @@ Cálculo do ângulo entre duas direções (redução entre Ré e Vante):
     # Tabela Vertical
     st.markdown("##### Medição Angular Vertical/Zenital")
     st.markdown(
-        r"""
-**Fórmula utilizada (Z corrigido)**  
-
-\[
-Z = \frac{Z'_{PD} - Z'_{PI}}{2} + 180^\circ
-\]
-""",
-        unsafe_allow_html=False,
+        """
+        <b>Fórmula utilizada (Z corrigido)</b><br><br>
+        <span style="font-family: 'DejaVu Sans Mono', monospace;">
+        Z = ( Z'<sub>PD</sub> &minus; Z'<sub>PI</sub> ) / 2 + 180&deg;
+        </span>
+        """,
+        unsafe_allow_html=True,
     )
     tab_z = tabela_medicao_angular_vertical(df_par)
     st.dataframe(tab_z, use_container_width=True)
@@ -695,7 +690,7 @@ def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>único_arquivo_1.1 — Tabelas no formato do slide (Hz / Z), DMS com segundos inteiros, DH com 3 casas.</code>.
+            Versão do app: <code>único_arquivo_1.2 — Tabelas no formato do slide (Hz / Z), DMS com segundos inteiros, DH com 3 casas, fórmulas em HTML.</code>.
         </p>
         """,
         unsafe_allow_html=True,
