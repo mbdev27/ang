@@ -3,7 +3,8 @@
 
 import io
 import math
-from typing import List
+import string
+from typing import List, Dict
 
 import numpy as np
 import pandas as pd
@@ -344,6 +345,114 @@ def tabela_distancias_medias_simetricas(res: pd.DataFrame) -> pd.DataFrame:
     return df_dist
 
 
+# ==================== 7ª Tabela – Resumo final ====================
+
+
+def mapear_pontos_para_letras(res: pd.DataFrame) -> Dict[str, str]:
+    """Cria dicionário {nome_original -> letra} na ordem de aparição."""
+    nomes = list(pd.unique(pd.concat([res["EST"], res["PV"]], ignore_index=True)))
+    letras = list(string.ascii_uppercase)
+    mapa = {}
+    for i, nome in enumerate(nomes):
+        if i < len(letras):
+            mapa[str(nome)] = letras[i]
+        else:
+            # se acabar o alfabeto, mantém o nome original
+            mapa[str(nome)] = str(nome)
+    return mapa
+
+
+def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) -> pd.DataFrame:
+    """
+    Tabela-resumo no formato da imagem enviada:
+
+    EST | PV | Hz Médio | Hz Reduzido | Média das Séries (Hz) | Z Corrigido | Média das Séries (Z) | DH Médio
+    """
+    # Primeiro, reaproveita os resultados das tabelas anteriores
+    tab_hz = tabela_hz_por_serie(res)  # já tem Hz Médio, Hz Reduzido, Média das séries (Hz)
+    tab_z = tabela_z_por_serie(res)    # já tem Z Corrigido, Média das séries (Z)
+
+    # Junta Hz e Z pelo par (EST, PV)
+    hz_cols = ["Estação", "Ponto Visado", "Hz Médio", "Hz Reduzido", "Média das séries"]
+    z_cols = ["Estação", "Ponto Visado", "Z Corrigido", "Média das séries"]
+
+    df_hz = tab_hz[hz_cols].copy()
+    df_z = tab_z[z_cols].copy()
+    df_z = df_z.rename(columns={"Média das séries": "Média Z das séries"})
+
+    resumo = pd.merge(
+        df_hz,
+        df_z,
+        on=["Estação", "Ponto Visado"],
+        how="outer",
+    )
+
+    # Adiciona DH médio (em metros) a partir de res
+    df_dh = res[["EST", "PV", "DH_med_m"]].copy()
+    df_dh["DH_med_str"] = df_dh["DH_med_m"].apply(
+        lambda x: f"{x:.3f}" if pd.notna(x) else ""
+    )
+    df_dh_grp = df_dh.groupby(["EST", "PV"], as_index=False)["DH_med_str"].first()
+    resumo = resumo.merge(
+        df_dh_grp,
+        left_on=["Estação", "Ponto Visado"],
+        right_on=["EST", "PV"],
+        how="left",
+    )
+
+    # Renomeia colunas finais
+    resumo = resumo[
+        [
+            "Estação",
+            "Ponto Visado",
+            "Hz Médio",
+            "Hz Reduzido",
+            "Média das séries",
+            "Z Corrigido",
+            "Média Z das séries",
+            "DH_med_str",
+        ]
+    ].rename(
+        columns={
+            "Média das séries": "Média das Séries (Hz)",
+            "DH_med_str": "DH Médio (m)",
+        }
+    )
+
+    # Renomear pontos para letras (A, B, C...) se solicitado
+    if renomear_para_letras:
+        mapa = mapear_pontos_para_letras(res)
+        resumo["EST"] = resumo["Estação"].astype(str).map(mapa)
+        resumo["PV"] = resumo["Ponto Visado"].astype(str).map(mapa)
+        resumo = resumo[
+            [
+                "EST",
+                "PV",
+                "Hz Médio",
+                "Hz Reduzido",
+                "Média das Séries (Hz)",
+                "Z Corrigido",
+                "Média Z das séries",
+                "DH Médio (m)",
+            ]
+        ]
+    else:
+        resumo = resumo[
+            [
+                "Estação",
+                "Ponto Visado",
+                "Hz Médio",
+                "Hz Reduzido",
+                "Média das Séries (Hz)",
+                "Z Corrigido",
+                "Média Z das séries",
+                "DH Médio (m)",
+            ]
+        ]
+
+    return resumo
+
+
 # ==================== CSS / Layout ====================
 
 CUSTOM_CSS = """
@@ -566,12 +675,27 @@ def secao_calculos(df_uso: pd.DataFrame):
     df_dist = tabela_distancias_medias_simetricas(res)
     st.dataframe(df_dist, use_container_width=True)
 
+    st.markdown(
+        """
+        <div class="section-title">
+            <span class="dot"></span>
+            <span>7. Tabela resumo (Hz, Z e DH)</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    usar_letras = st.checkbox(
+        "Renomear pontos EST/PV para letras (A, B, C, ...)", value=True
+    )
+    resumo = tabela_resumo_final(res, renomear_para_letras=usar_letras)
+    st.dataframe(resumo, use_container_width=True)
+
 
 def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v7.1 — Hz e Z conforme modelos dos slides (Média das Direções, Hz Reduzido, Z corrigido, Médias das séries)</code>.
+            Versão do app: <code>UFPE_v8.0 — Inclui 7ª tabela resumo com Hz, Z e DH, com opção de renomear pontos para letras.</code>.
         </p>
         """,
         unsafe_allow_html=True,
