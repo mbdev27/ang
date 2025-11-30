@@ -555,7 +555,7 @@ def selecionar_linhas_por_estacao_e_conjunto(
     return int(idxs[0]), int(idxs[1])
 
 # =====================================================================
-#  Plotagem do triângulo (retorna figura e buffer)
+#  Plotagem do triângulo (retorna figura e buffer JPG)
 # =====================================================================
 
 def plotar_triangulo_info(info):
@@ -581,27 +581,27 @@ def plotar_triangulo_info(info):
     ys = [y_est, y_pv1, y_pv2, y_est]
 
     fig, ax = plt.subplots()
-    ax.plot(xs, ys, "-o", color="#ffffff")
-    ax.set_facecolor("#7f0000")
-    fig.patch.set_facecolor("#7f0000")
+    ax.plot(xs, ys, "-o", color="#7f0000")
+    ax.set_facecolor("#ffffff")
+    fig.patch.set_facecolor("#ffffff")
     ax.set_aspect("equal", "box")
 
-    ax.text(x_est, y_est, f" {est}", fontsize=10, color="#ffffff")
-    ax.text(x_pv1, y_pv1, f" {pv1}", fontsize=10, color="#ffffff")
-    ax.text(x_pv2, y_pv2, f" {pv2}", fontsize=10, color="#ffffff")
+    ax.text(x_est, y_est, f" {est}", fontsize=10, color="#111827")
+    ax.text(x_pv1, y_pv1, f" {pv1}", fontsize=10, color="#111827")
+    ax.text(x_pv2, y_pv2, f" {pv2}", fontsize=10, color="#111827")
 
     ax.text((x_est + x_pv1) / 2, (y_est + y_pv1) / 2,
-            f"{b:.3f} m", color="#ffe4e4", fontsize=9)
+            f"{b:.3f} m", color="#374151", fontsize=9)
     ax.text((x_est + x_pv2) / 2, (y_est + y_pv2) / 2,
-            f"{c:.3f} m", color="#ffe4e4", fontsize=9)
+            f"{c:.3f} m", color="#374151", fontsize=9)
     ax.text((x_pv1 + x_pv2) / 2, (y_pv1 + y_pv2) / 2,
-            f"{a:.3f} m", color="#ffe4e4", fontsize=9)
+            f"{a:.3f} m", color="#374151", fontsize=9)
 
-    ax.set_xlabel("X (m)", color="#ffe4e4")
-    ax.set_ylabel("Y (m)", color="#ffe4e4")
-    ax.tick_params(colors="#ffe4e4")
-    ax.grid(True, linestyle="--", alpha=0.3, color="#fca5a5")
-    ax.set_title("Representação do triângulo em planta", color="#ffe4e4")
+    ax.set_xlabel("X (m)", color="#111827")
+    ax.set_ylabel("Y (m)", color="#111827")
+    ax.tick_params(colors="#111827")
+    ax.grid(True, linestyle="--", alpha=0.3, color="#9ca3af")
+    ax.set_title("Representação do triângulo em planta", color="#111827")
 
     st.pyplot(fig)
 
@@ -612,110 +612,9 @@ def plotar_triangulo_info(info):
     return buf
 
 # =====================================================================
-#  CSS / Layout
+#  Aplica CSS
 # =====================================================================
 
-CUSTOM_CSS = """
-<style>
-body, .stApp {
-  background: radial-gradient(circle at top left,#520000 0%,#8b0000 40%,#1f1f1f 100%);
-  color:#ffffff;
-  font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
-}
-
-/* texto do corpo em preto num cartão branco */
-.main-card{
-  background:#ffffff;
-  color:#111827;
-  border-radius:22px;
-  padding:1.4rem 2.0rem 1.4rem 2.0rem;
-  border:1px solid rgba(148,27,37,0.40);
-  box-shadow:0 22px 46px rgba(15,23,42,0.30);
-  max-width:1320px;
-  margin:1.2rem auto 2.0rem auto;
-}
-.main-card p { text-align: justify; }
-
-/* Cabeçalho vermelho interno ao card */
-.ufpe-header-band{
-  width:100%;
-  padding:0.7rem 1.0rem 0.6rem 1.0rem;
-  border-radius:14px;
-  background:linear-gradient(90deg,#4b0000 0%,#7e0000 40%,#b30000 75%,#4b0000 100%);
-  color:#f9fafb;
-  display:flex;
-  align-items:flex-start;
-  gap:0.8rem;
-}
-.ufpe-header-text{
-  font-size:0.87rem;
-}
-.ufpe-header-text b{
-  font-weight:700;
-}
-
-/* Seções */
-.section-title{
-  font-size:1.00rem;
-  font-weight:700;
-  margin-top:1.5rem;
-  margin-bottom:0.6rem;
-  display:flex;
-  align-items:center;
-  gap:0.4rem;
-  color:#8b0000;
-  text-transform:uppercase;
-  letter-spacing:0.05em;
-}
-.section-title span.dot{
-  width:9px;
-  height:9px;
-  border-radius:999px;
-  background:radial-gradient(circle at 30% 30%,#ffffff 0%,#ffbdbd 35%,#7f0000 90%);
-}
-
-/* Quadros auxiliares */
-.helper-box{
-  border-radius:10px;
-  padding:0.6rem 0.8rem;
-  background:#fff5f5;
-  border:1px solid rgba(148,27,37,0.35);
-  font-size:0.86rem;
-  color:#111827;
-  margin-bottom:0.5rem;
-}
-
-/* Tabelas */
-[data-testid="stDataFrame"],[data-testid="stDataEditor"]{
-  background:#ffffff !important;
-  border-radius:10px;
-  border:1px solid rgba(148,27,37,0.25);
-  box-shadow:0 10px 22px rgba(15,23,42,0.15);
-}
-
-/* Botões em vermelho/branco, texto preto */
-.stButton>button, .stDownloadButton>button {
-  background: #b30000;
-  color: #111827;
-  border-radius: 999px;
-  border: 1px solid #7f0000;
-  padding: 0.35rem 1.1rem;
-  font-weight: 600;
-}
-.stButton>button:hover, .stDownloadButton>button:hover {
-  background: #ffffff;
-  color: #111827;
-  border: 1px solid #b30000;
-}
-
-.footer-text{
-  font-size:0.75rem;
-  color:#6b7280;
-}
-
-:root{color-scheme:light;}
-</style>
-"""
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # =====================================================================
@@ -1063,7 +962,6 @@ def gerar_xlsx_com_figura(info_triangulo, figura_buf):
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         wb = writer.book
 
-        # Aba com resumo numérico
         df_resumo = pd.DataFrame(
             {
                 "Descrição": [
@@ -1088,7 +986,6 @@ def gerar_xlsx_com_figura(info_triangulo, figura_buf):
         )
         df_resumo.to_excel(writer, sheet_name="ResumoTriangulo", index=False)
 
-        # Aba com figura
         ws_fig = wb.add_worksheet("FiguraTriangulo")
         writer.sheets["FiguraTriangulo"] = ws_fig
         if figura_buf is not None:
@@ -1101,8 +998,8 @@ def rodape(info_triangulo, figura_buf):
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v13 — cabeçalho unificado, corpo preto justificado,
-            download em XLSX com resumo e figura em JPG.</code>.
+            Versão do app: <code>UFPE_v13.1 — degradê apenas no cabeçalho,
+            corpo neutro, download em XLSX com resumo e figura em JPG.</code>.
         </p>
         """,
         unsafe_allow_html=True,
