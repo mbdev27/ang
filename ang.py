@@ -3,7 +3,7 @@
 
 import io
 import math
-from typing import List
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 REQUIRED_COLS_BASE = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
-OPTIONAL_COLS = ["SEQ"]  # Número da série (usado só internamente)
+OPTIONAL_COLS = ["SEQ"]
 REQUIRED_COLS_ALL = REQUIRED_COLS_BASE + OPTIONAL_COLS
 
 # ==================== Funções de ângulo ====================
@@ -241,7 +241,7 @@ def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
     return res
 
 
-# ==================== Tabelas por série (modelo dos slides) ====================
+# ==================== Tabelas por série ====================
 
 
 def tabela_hz_por_serie(res: pd.DataFrame) -> pd.DataFrame:
@@ -306,7 +306,7 @@ def tabela_z_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     df_med["Z_med_series_DMS"] = df_med["Z_med_series_deg"].apply(decimal_to_dms)
 
     df = df.merge(df_med, on=["EST", "PV"], how="left")
-    df.sort_values(by="_ordem_original", inplace=True)
+    df.sort_values(by "_ordem_original", inplace=True)
 
     tab = pd.DataFrame(
         {
@@ -345,22 +345,11 @@ def tabela_distancias_medias_simetricas(res: pd.DataFrame) -> pd.DataFrame:
     return df_dist
 
 
-# ==================== 7ª Tabela – Resumo final ====================
+# ==================== 7ª Tabela resumo ====================
 
 
 def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) -> pd.DataFrame:
-    """
-    Tabela-resumo:
-
-    EST | PV | Hz Médio | Hz Reduzido | Média das Séries (Hz) | Z Corrigido | Média das Séries (Z) | DH Médio
-
-    Garante UMA linha por par (EST, PV).
-    Se renomear_para_letras=True, apenas substitui:
-      P1 -> A, P2 -> B, P3 -> C
-    """
-    # 1) Tabela Hz completa
     tab_hz_full = tabela_hz_por_serie(res)
-    # 2) Uma linha por (Estação, Ponto Visado)
     tab_hz = (
         tab_hz_full
         .groupby(["Estação", "Ponto Visado"], as_index=False)
@@ -373,7 +362,6 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         )
     )
 
-    # 3) Tabela Z completa
     tab_z_full = tabela_z_por_serie(res)
     tab_z = (
         tab_z_full
@@ -386,7 +374,6 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         )
     )
 
-    # 4) Juntar Hz e Z
     resumo = pd.merge(
         tab_hz,
         tab_z,
@@ -394,7 +381,6 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         how="outer",
     )
 
-    # 5) DH médio por (EST, PV)
     df_dh = res[["EST", "PV", "DH_med_m"]].copy()
     df_dh["DH_med_str"] = df_dh["DH_med_m"].apply(
         lambda x: f"{x:.3f}" if pd.notna(x) else ""
@@ -408,7 +394,6 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         how="left",
     )
 
-    # 6) Seleciona e renomeia colunas
     resumo = resumo[
         [
             "Estação",
@@ -427,12 +412,10 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         }
     )
 
-    # 7) Renomear P1, P2, P3 para A, B, C (sem mexer no nº de linhas)
     if renomear_para_letras:
         mapa_simples = {"P1": "A", "P2": "B", "P3": "C"}
         resumo["EST"] = resumo["Estação"].astype(str).replace(mapa_simples)
         resumo["PV"] = resumo["Ponto Visado"].astype(str).replace(mapa_simples)
-
         resumo = resumo[
             [
                 "EST",
@@ -462,11 +445,10 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
     return resumo
 
 
-# ==================== Triângulo a partir de duas linhas ====================
+# ==================== Triângulo — cálculos ====================
 
 
 def _angulo_interno(a, b, c):
-    """Retorna ângulo oposto ao lado a, em graus (Teorema dos Cossenos)."""
     try:
         if a <= 0 or b <= 0 or c <= 0:
             return float("nan")
@@ -478,18 +460,8 @@ def _angulo_interno(a, b, c):
 
 
 def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
-    """
-    Recebe índices (0-based) de duas linhas de 'res' (cálculo linha a linha)
-    e monta o triângulo:
-
-      - mesma estação EST
-      - PVs diferentes
-
-    Retorna dicionário com lados, ângulos internos e área, ou None se inválido.
-    """
     if idx1 == idx2:
         return None
-
     if idx1 < 0 or idx1 >= len(res) or idx2 < 0 or idx2 >= len(res):
         return None
 
@@ -500,35 +472,28 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
     pv1, pv2 = str(r1["PV"]), str(r2["PV"])
 
     if est1 != est2:
-        return None  # precisa mesma estação
+        return None
     if pv1 == pv2:
-        return None  # PVs diferentes
+        return None
 
     est = est1
-
-    # Distâncias médias horizontais (lados a partir da estação)
-    b = float(r1["DH_med_m"])  # EST -> PV1
-    c = float(r2["DH_med_m"])  # EST -> PV2
-
+    b = float(r1["DH_med_m"])
+    c = float(r2["DH_med_m"])
     hz1 = float(r1["Hz_med_deg"])
     hz2 = float(r2["Hz_med_deg"])
 
-    # Alpha = diferença de direções na estação
     alpha_deg = (hz2 - hz1) % 360.0
     if alpha_deg > 180.0:
         alpha_deg = 360.0 - alpha_deg
 
-    # Lado oposto a alpha: a = PV1–PV2 (Teorema dos Cossenos)
     a = math.sqrt(
         b**2 + c**2 - 2 * b * c * math.cos(math.radians(alpha_deg))
     )
 
-    # Ângulos internos
-    A_int = _angulo_interno(a, b, c)  # em EST
-    B_int = _angulo_interno(b, a, c)  # em PV1
-    C_int = _angulo_interno(c, a, b)  # em PV2
+    A_int = _angulo_interno(a, b, c)
+    B_int = _angulo_interno(b, a, c)
+    C_int = _angulo_interno(c, a, b)
 
-    # Área (Herão)
     s = (a + b + c) / 2.0
     area = math.sqrt(max(s * (s - a) * (s - b) * (s - c), 0.0))
 
@@ -547,27 +512,112 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
     }
 
 
+# ====== Seleção automática de pares de linhas por estação e conjunto ======
+
+
+def selecionar_linhas_por_estacao_e_conjunto(
+    res: pd.DataFrame, estacao_letra: str, conjunto: str
+) -> Optional[Tuple[int, int]]:
+    """
+    Retorna (idx1, idx2) em res (0-based) conforme regras:
+
+    Estação A (P1):
+        - 1ª leitura: EST=P2, PV in {P3, P1}
+        - 2ª leitura: EST=P1, PV in {P2, P3}, SEQ=1
+        - 3ª leitura: EST=P1, PV in {P2, P3}, SEQ=2 (ou 3, conforme dados)
+
+    Estação B (P2):
+        - sempre EST=P2, PV in {P3, P1}, variando SEQ
+
+    Estação C (P3):
+        - sempre EST=P3, PV in {P1, P2}, variando SEQ
+    """
+    # Mapeia letras para P1/P2/P3
+    letra_to_p = {"A": "P1", "B": "P2", "C": "P3"}
+    est_ref = letra_to_p.get(estacao_letra)
+    if est_ref is None:
+        return None
+
+    # Conjunto -> "ordem" de leitura (1,2,3)
+    ordem = {"1ª leitura": 1, "2ª leitura": 2, "3ª leitura": 3}[conjunto]
+
+    # Facilita acesso a SEQ; se estiver vazio, tratamos como 1
+    df = res.copy()
+    if "SEQ" not in df.columns:
+        df["SEQ"] = np.nan
+    df["SEQ_eff"] = df["SEQ"].fillna(1).astype(int)
+
+    # ----- Estação A (P1) -----
+    if est_ref == "P1":
+        if ordem == 1:
+            # 1ª leitura: B>C + B>A  => EST=P2, PV in {P3, P1}
+            mask = (df["EST"] == "P2") & (df["PV"].isin(["P3", "P1"]))
+        else:
+            # 2ª e 3ª: A>B + A>C  => EST=P1, PV in {P2, P3}, SEQ_eff = ordem-1
+            seq_alvo = ordem - 1  # 2ª ->1, 3ª->2
+            mask = (
+                (df["EST"] == "P1")
+                & (df["PV"].isin(["P2", "P3"]))
+                & (df["SEQ_eff"] == seq_alvo)
+            )
+
+    # ----- Estação B (P2) -----
+    elif est_ref == "P2":
+        # 1ª,2ª,3ª: B>C + B>A  => EST=P2, PV in {P3,P1}, SEQ_eff = ordem
+        mask = (
+            (df["EST"] == "P2")
+            & (df["PV"].isin(["P3", "P1"]))
+            & (df["SEQ_eff"] == ordem)
+        )
+
+    # ----- Estação C (P3) -----
+    else:  # est_ref == "P3"
+        # 1ª,2ª,3ª: C>A + C>B  => EST=P3, PV in {P1,P2}, SEQ_eff = ordem
+        mask = (
+            (df["EST"] == "P3")
+            & (df["PV"].isin(["P1", "P2"]))
+            & (df["SEQ_eff"] == ordem)
+        )
+
+    candidatos = df[mask].sort_values(by=["PV", "SEQ_eff"])
+    if len(candidatos) < 2:
+        return None
+
+    idxs = candidatos.index.to_list()[:2]  # pega duas primeiras
+    return idxs[0], idxs[1]
+
+
+# ==================== Plotagem do triângulo (formato croqui) ====================
+
+
 def plotar_triangulo_info(info):
     """
-    Desenha triângulo em planta, com:
-      - EST na origem
-      - PV1, PV2 posicionados a partir de b e c e ângulo alpha
+    Desenha o triângulo em planta com disposição semelhante ao croqui:
+
+    - EST (P1/A) à esquerda
+    - PV1 (P2/B) acima de PV2 (P3/C) à direita
     """
     est = info["EST"]
     pv1 = info["PV1"]
     pv2 = info["PV2"]
+
     b = info["b_EST_PV1"]
     c = info["c_EST_PV2"]
-    alpha_deg = info["alpha_EST_deg"]
+    a = info["a_PV1_PV2"]
 
-    # Coloca EST na origem.
+    # EST na origem
     x_est, y_est = 0.0, 0.0
-    # Coloca PV1 no eixo x (ângulo 0)
-    x_pv1, y_pv1 = b, 0.0
-    # PV2 a partir de alpha
-    alpha_rad = math.radians(alpha_deg)
-    x_pv2 = c * math.cos(alpha_rad)
-    y_pv2 = c * math.sin(alpha_rad)
+
+    # PV2 (C) no eixo X, à direita
+    x_pv2, y_pv2 = c, 0.0
+
+    # Cálculo de PV1 (B) garantindo distâncias b e a
+    if c == 0:
+        x_pv1, y_pv1 = b, 0.0
+    else:
+        x_pv1 = (b**2 - a**2 + c**2) / (2 * c)
+        arg = max(b**2 - x_pv1**2, 0.0)
+        y_pv1 = math.sqrt(arg)
 
     xs = [x_est, x_pv1, x_pv2, x_est]
     ys = [y_est, y_pv1, y_pv2, y_est]
@@ -576,19 +626,16 @@ def plotar_triangulo_info(info):
     ax.plot(xs, ys, "-o", color="#7f0000")
     ax.set_aspect("equal", "box")
 
-    # Rótulos dos vértices
     ax.text(x_est, y_est, f" {est}", fontsize=10, color="#111827")
     ax.text(x_pv1, y_pv1, f" {pv1}", fontsize=10, color="#111827")
     ax.text(x_pv2, y_pv2, f" {pv2}", fontsize=10, color="#111827")
 
-    # Lados
-    a = info["a_PV1_PV2"]
-    ax.text((x_pv1 + x_pv2) / 2, (y_pv1 + y_pv2) / 2,
-            f"{a:.3f} m", color="#374151", fontsize=9)
     ax.text((x_est + x_pv1) / 2, (y_est + y_pv1) / 2,
             f"{b:.3f} m", color="#374151", fontsize=9)
     ax.text((x_est + x_pv2) / 2, (y_est + y_pv2) / 2,
             f"{c:.3f} m", color="#374151", fontsize=9)
+    ax.text((x_pv1 + x_pv2) / 2, (y_pv1 + y_pv2) / 2,
+            f"{a:.3f} m", color="#374151", fontsize=9)
 
     ax.set_xlabel("X (m)")
     ax.set_ylabel("Y (m)")
@@ -774,10 +821,10 @@ def secao_calculos(df_uso: pd.DataFrame):
 
     res = calcular_linha_a_linha(df_uso)
 
-    # ---------- Tabela linha a linha ----------
     cols_linha = [
         "EST",
         "PV",
+        "SEQ",
         "Hz_PD",
         "Hz_PI",
         "Hz_med_DMS",
@@ -831,7 +878,6 @@ def secao_calculos(df_uso: pd.DataFrame):
     df_dist = tabela_distancias_medias_simetricas(res)
     st.dataframe(df_dist, use_container_width=True)
 
-    # ---------- 7ª Tabela ----------
     st.markdown(
         """
         <div class="section-title">
@@ -844,75 +890,80 @@ def secao_calculos(df_uso: pd.DataFrame):
     resumo = tabela_resumo_final(res, renomear_para_letras=True)
     st.dataframe(resumo, use_container_width=True)
 
-    # ---------- 8. Triângulo selecionado ----------
+    # ---------- 8. Triângulo com seleção automática ----------
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>8. Triângulo selecionado (Teorema dos Cossenos)</span>
+            <span>8. Triângulo selecionado (conjunto automático de medições)</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    st.markdown(
-        "Informe os números das **duas linhas** da tabela de cálculo linha a linha "
-        "que deseja usar para formar o triângulo (por exemplo, 1 e 2).",
-    )
 
     col_a, col_b = st.columns(2)
     with col_a:
-        linha1 = st.number_input(
-            "Linha 1 (1ª visada)", min_value=1, max_value=len(res), value=1, step=1
-        )
+        estacao_op = st.selectbox("Estação (A, B, C)", ["A", "B", "C"])
     with col_b:
-        linha2 = st.number_input(
-            "Linha 2 (2ª visada)", min_value=1, max_value=len(res), value=2, step=1
+        conjunto_op = st.selectbox(
+            "Conjunto de leituras",
+            ["1ª leitura", "2ª leitura", "3ª leitura"],
         )
 
-    if st.button("Calcular triângulo a partir das linhas selecionadas"):
-        info = calcular_triangulo_duas_linhas(res, linha1 - 1, linha2 - 1)
-        if info is None:
+    st.markdown(
+        "O programa seleciona automaticamente o par de leituras adequado "
+        "para formar o triângulo, conforme as regras definidas para cada estação."
+    )
+
+    if st.button("Gerar triângulo"):
+        pares = selecionar_linhas_por_estacao_e_conjunto(res, estacao_op, conjunto_op)
+        if pares is None:
             st.error(
-                "Não foi possível formar o triângulo. "
-                "Verifique se as duas linhas têm a **mesma estação** e **PVs diferentes**."
+                "Não foi possível encontrar duas leituras compatíveis para "
+                f"Estação {estacao_op} e {conjunto_op}. "
+                "Verifique se a coluna SEQ e os PVs estão preenchidos como no modelo."
             )
         else:
-            est = info["EST"]
-            pv1 = info["PV1"]
-            pv2 = info["PV2"]
+            idx1, idx2 = pares
+            info = calcular_triangulo_duas_linhas(res, idx1, idx2)
+            if info is None:
+                st.error("Falha ao calcular o triângulo a partir das leituras selecionadas.")
+            else:
+                est = info["EST"]
+                pv1 = info["PV1"]
+                pv2 = info["PV2"]
 
-            st.markdown(
-                f"**Triângulo formado por {est}, {pv1} e {pv2} "
-                f"(leituras das linhas {linha1} e {linha2}).**"
-            )
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("**Lados (m):**")
                 st.markdown(
-                    f"- {est}–{pv1}: `{info['b_EST_PV1']:.3f}` m\n"
-                    f"- {est}–{pv2}: `{info['c_EST_PV2']:.3f}` m\n"
-                    f"- {pv1}–{pv2}: `{info['a_PV1_PV2']:.3f}` m"
-                )
-                st.markdown("**Ângulos internos:**")
-                st.markdown(
-                    f"- Em {est}: `{decimal_to_dms(info['ang_EST_deg'])}`\n"
-                    f"- Em {pv1}: `{decimal_to_dms(info['ang_PV1_deg'])}`\n"
-                    f"- Em {pv2}: `{decimal_to_dms(info['ang_PV2_deg'])}`"
-                )
-                st.markdown(
-                    f"**Área do triângulo:** `{info['area_m2']:.3f}` m²"
+                    f"**Triângulo formado automaticamente por {est}, {pv1} e {pv2} "
+                    f"({conjunto_op} na Estação {estacao_op}).**"
                 )
 
-            with col2:
-                plotar_triangulo_info(info)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Lados (m):**")
+                    st.markdown(
+                        f"- {est}–{pv1}: `{info['b_EST_PV1']:.3f}` m\n"
+                        f"- {est}–{pv2}: `{info['c_EST_PV2']:.3f}` m\n"
+                        f"- {pv1}–{pv2}: `{info['a_PV1_PV2']:.3f}` m"
+                    )
+                    st.markdown("**Ângulos internos:**")
+                    st.markdown(
+                        f"- Em {est}: `{decimal_to_dms(info['ang_EST_deg'])}`\n"
+                        f"- Em {pv1}: `{decimal_to_dms(info['ang_PV1_deg'])}`\n"
+                        f"- Em {pv2}: `{decimal_to_dms(info['ang_PV2_deg'])}`"
+                    )
+                    st.markdown(
+                        f"**Área do triângulo:** `{info['area_m2']:.3f}` m²"
+                    )
+                with col2:
+                    plotar_triangulo_info(info)
 
 
 def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v10.0 — Inclui 7ª tabela resumo e triângulo interativo (Teorema dos Cossenos) a partir de duas leituras.</code>.
+            Versão do app: <code>UFPE_v11.0 — seleção automática de conjuntos de leituras por estação (A,B,C) e triângulo em planta.</code>.
         </p>
         """,
         unsafe_allow_html=True,
