@@ -1,19 +1,43 @@
-# 📐 Calculadora de Ângulos e Distâncias – Topografia (Streamlit)
+# 📐 Calculadora Topográfica — Estação Total
 
-Uma aplicação em Streamlit para cálculo rápido e preciso de:
+Aplicação web em **Streamlit** para cálculo de distâncias horizontais e ângulo horizontal médio a partir de leituras **PD / PI** de uma Estação Total.
 
-- Ângulo Horizontal médio (PD/PI)
-- Ângulo Zenital médio (PD/PI)
-- Distância Inclinada média (PD/PI)
-- Distância Horizontal (DH)
-- Componente Vertical (V)
+## 🔧 Funcionalidades
 
-Ideal para estudantes, profissionais de topografia e usuários que desejam um cálculo prático e confiável.
+- Upload de planilhas **Excel/CSV** com leituras de campo;
+- Edição interativa dos dados diretamente na tabela da aplicação;
+- Aceita ângulos:
+  - em **DMS**: `235°47'33"`, `235 47 33`, `235:47:33`;
+  - em **graus decimais**: `235.7925`;
+- Cálculo automático de:
+  - `Dh_PD (m)` — distância horizontal lado PD;
+  - `Dh_PI (m)` — distância horizontal lado PI;
+  - `AH_médio (DMS)` — ângulo horizontal médio entre PD e PI;
+- Download:
+  - Modelo de planilha (`modelo_estacao_total.xlsx`);
+  - Saída com resultados em `saida_topografia.csv`;
+- Layout escuro com CSS customizado.
 
----
+## 🧮 Fórmulas utilizadas
 
-## 🚀 Como rodar localmente
+- Conversão de ângulos DMS → decimal;
+- Distância horizontal:
+  
+  $$Dh = DI \\cdot \\sin(AZ)$$
 
-1. Instale o Streamlit:
+  onde:
+  - \( DI \) = distância inclinada (m);
+  - \( AZ \) = ângulo zenital em graus decimais.
+
+- Ângulo horizontal médio:
+
+  $$ AH_{médio} = \\dfrac{AH_{PD} + AH_{PI}}{2} $$
+
+## ▶️ Como executar
+
+1. Crie e ative um ambiente virtual (opcional, mas recomendado):
+
    ```bash
-   pip install -r requirements.txt
+   python -m venv .venv
+   source .venv/bin/activate  # Linux/macOS
+   .venv\\Scripts\\activate   # Windows
