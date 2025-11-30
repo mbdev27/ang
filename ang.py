@@ -110,15 +110,18 @@ st.markdown(
 def dms_to_decimal(dms_str: str) -> float:
     """
     Converte um ângulo em string (g°m′s″ ou 'g m s') para graus decimais.
-    Ex.: '145°47\'33"' ou '145 47 33' -> 145.7925...
+    Ex.: '145°47\\'33\"' ou '145 47 33' -> 145.7925...
+    Retorna NaN se não conseguir converter.
     """
     if pd.isna(dms_str):
         return np.nan
 
     s = str(dms_str).strip()
+    if s == "":
+        return np.nan
 
-    # Aceita formato com espaços: g m s
-    if " " in s and "°" not in s and "'" not in s and '"' not in s:
+    # Formato "g m s" (apenas espaços, sem ° ' ")
+    if " " in s and all(ch not in s for ch in ["°", "º", "'", "’", '"']):
         try:
             g, m, sec = s.split()
             g = float(g)
@@ -130,12 +133,12 @@ def dms_to_decimal(dms_str: str) -> float:
         except Exception:
             return np.nan
 
-    # Formatos com ° ' "
-    # Remove símbolos não numéricos exceto separadores
+    # Normaliza símbolos
     s = s.replace("º", "°")
     s = s.replace("’", "'").replace("´", "'")
-    for ch in [" ", "  "]:
-        s = s.replace(ch, "")
+    while "  " in s:
+        s = s.replace("  ", " ")
+    s = s.replace(" ", "")
 
     g = m = sec = 0.0
     try:
@@ -144,7 +147,8 @@ def dms_to_decimal(dms_str: str) -> float:
             g = float(parts[0])
             resto = parts[1]
         else:
-            return float(s)  # já decimal
+            # já está em graus decimais
+            return float(s)
 
         if "'" in resto:
             parts = resto.split("'")
@@ -170,9 +174,12 @@ def calcula_resultados(df: pd.DataFrame) -> pd.DataFrame:
     """
     Recebe DataFrame com colunas obrigatórias:
     EST, PV, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI
+
     Retorna DataFrame com:
-    EST, PV, Hz_PD (dec), Hz_PI (dec), Hz_medio (dec),
-    DH_PD, DH_PI, DH_medio, DN_PD, DN_PI, DN_medio
+    EST, PV,
+    Hz_PD (graus), Hz_PI (graus), Hz_médio (graus),
+    DH_PD (m), DH_PI (m), DH_médio (m),
+    DN_PD (m), DN_PI (m), DN_médio (m)
     """
     df_calc = df.copy()
 
@@ -180,31 +187,31 @@ def calcula_resultados(df: pd.DataFrame) -> pd.DataFrame:
     for col in ["Hz_PD", "Hz_PI", "Z_PD", "Z_PI"]:
         df_calc[col + "_dec"] = df_calc[col].apply(dms_to_decimal)
 
-    # Convertendo distâncias para float
+    # Converte distâncias para float
     for col in ["DI_PD", "DI_PI"]:
         df_calc[col] = pd.to_numeric(df_calc[col], errors="coerce")
 
     # Média de direção (em graus decimais)
     df_calc["Hz_medio"] = (df_calc["Hz_PD_dec"] + df_calc["Hz_PI_dec"]) / 2.0
 
-    # Distância horizontal e diferença de nível
-    # Z em graus decimais -> radianos
+    # Distâncias horizontal (DH) e diferença de nível (DN)
+    # assumindo Z = ângulo zenital
     for lado in ["PD", "PI"]:
         z_dec = df_calc[f"Z_{lado}_dec"] * np.pi / 180.0
         di = df_calc[f"DI_{lado}"]
 
-        df_calc[f"DH_{lado}"] = di * np.sin(z_dec)   # se Z é zenital
-        df_calc[f"DN_{lado}"] = di * np.cos(z_dec)
+        df_calc[f"DH_{lado}"] = di * np.sin(z_dec)   # distância horizontal
+        df_calc[f"DN_{lado}"] = di * np.cos(z_dec)   # diferença de nível
 
     # Médias
     df_calc["DH_medio"] = (df_calc["DH_PD"] + df_calc["DH_PI"]) / 2.0
     df_calc["DN_medio"] = (df_calc["DN_PD"] + df_calc["DN_PI"]) / 2.0
 
-    # Arredonda para saída (distâncias em m com 3 casas)
+    # Arredonda distâncias (m) para 3 casas decimais
     for col in ["DH_PD", "DH_PI", "DH_medio", "DN_PD", "DN_PI", "DN_medio"]:
         df_calc[col] = df_calc[col].round(3)
 
-    # Monta resultado para exibição
+    # Monta resultado final
     resultado = df_calc[[
         "EST", "PV",
         "Hz_PD_dec", "Hz_PI_dec", "Hz_medio",
@@ -233,7 +240,7 @@ def main():
     col_logo, col_titulo = st.columns([1, 4])
 
     with col_logo:
-        # Se tiver um arquivo de imagem do brasão, coloque o caminho aqui
+        # Se tiver o arquivo de imagem do brasão, descomente e ajuste o nome:
         # st.image("brasao_ufpe.png", use_column_width=True)
         st.write("")
 
@@ -275,18 +282,20 @@ def main():
         """
         **Modelo esperado de planilha (.xlsx)** – cabeçalhos (linha 1):
 
-        - `EST`  
-        - `PV`  
-        - `Hz_PD`  – Ângulo Horizontal PD  
-        - `Hz_PI`  – Ângulo Horizontal PI  
-        - `Z_PD`   – Ângulo Zenital PD  
-        - `Z_PI`   – Ângulo Zenital PI  
-        - `DI_PD`  – Distância Inclinada PD (m)  
-        - `DI_PI`  – Distância Inclinada PI (m)  
+        - `EST`
+        - `PV`
+        - `Hz_PD`  – Ângulo Horizontal PD
+        - `Hz_PI`  – Ângulo Horizontal PI
+        - `Z_PD`   – Ângulo Zenital PD
+        - `Z_PI`   – Ângulo Zenital PI
+        - `DI_PD`  – Distância Inclinada PD (m)
+        - `DI_PI`  – Distância Inclinada PI (m)
 
-        Os ângulos podem estar em formato `g°m′s″` (por ex.: `145°47'33"`)
-        ou `g m s` (ex.: `145 47 33`).  
-        As distâncias devem estar em metros, com ponto decimal (ex.: `25.365`).
+        Os ângulos podem estar em formato `g°m′s″` (por exemplo: `145°47'33"`)
+        ou `g m s` (ex.: `145 47 33`).
+
+        As distâncias devem estar em metros (m), com ponto decimal
+        (por exemplo: `25.365`).
         """,
         unsafe_allow_html=False,
     )
@@ -319,7 +328,7 @@ def main():
             st.error(
                 "A planilha não está no formato esperado.\n\n"
                 "Cabeçalhos obrigatórios: EST, PV, Hz_PD, Hz_PI, "
-                "Z_PD, Z_PI, DI_PD, DI_PI\n\n"
+                "Z_PD, Z_PI, DI_PD, DI_PI.\n\n"
                 f"Faltando: {', '.join(faltando)}"
             )
             return
