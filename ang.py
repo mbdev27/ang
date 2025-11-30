@@ -391,11 +391,11 @@ if uploaded is not None:
                   'AnguloZenital_PD', 'AnguloZenital_PI']:
             results[c + '_deg'] = results[c].apply(parse_angle_to_decimal)
 
-        # Distâncias inclinadas em metros
+        # Distâncias inclinadas em metros (numérico)
         for c in ['DistanciaInclinada_PD', 'DistanciaInclinada_PI']:
             results[c + '_m'] = pd.to_numeric(results[c], errors='coerce')
 
-        # Distância horizontal PD
+        # Distância horizontal PD (m)
         results['Dh_PD_m'] = results.apply(
             lambda r: (
                 r['DistanciaInclinada_PD_m'] *
@@ -407,7 +407,7 @@ if uploaded is not None:
             axis=1
         )
 
-        # Distância horizontal PI (usada apenas na saída/CSV)
+        # Distância horizontal PI (m) — usada na saída/CSV
         results['Dh_PI_m'] = results.apply(
             lambda r: (
                 r['DistanciaInclinada_PI_m'] *
@@ -448,10 +448,10 @@ if uploaded is not None:
             "Ângulo Horizontal (PI)": results["AnguloHorizontal_PI"],
             "Ângulo Zenital (PD)": results["AnguloZenital_PD"],
             "Ângulo Zenital (PI)": results["AnguloZenital_PI"],
-            "Distância Inclinada (PD)": results["DistanciaInclinada_PD_m"].map(
+            "Distância Inclinada (PD) [m]": results["DistanciaInclinada_PD_m"].map(
                 lambda x: f"{x:.3f}" if pd.notna(x) else ""
             ),
-            "Distância Horizontal": results["Dh_PD_m"].map(
+            "Distância Horizontal [m]": results["Dh_PD_m"].map(
                 lambda x: f"{x:.3f}" if pd.notna(x) else ""
             ),
         })
@@ -496,7 +496,7 @@ st.markdown(
     <p class="footer-text">
         Observação: para gerar/baixar o modelo Excel (.xlsx) no servidor,
         certifique-se de incluir <code>openpyxl</code> no <code>requirements.txt</code>.<br>
-        Versão do app: <code>1.4</code> — cabeçalho UFPE, resultados em tabela e tabela de conferência.
+        Versão do app: <code>1.5</code> — distâncias em metros com 3 casas decimais.
     </p>
     """,
     unsafe_allow_html=True,
