@@ -3,8 +3,7 @@
 
 import io
 import math
-import string
-from typing import List, Dict
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -348,31 +347,20 @@ def tabela_distancias_medias_simetricas(res: pd.DataFrame) -> pd.DataFrame:
 # ==================== 7ª Tabela – Resumo final ====================
 
 
-def mapear_pontos_para_letras(res: pd.DataFrame) -> Dict[str, str]:
-    """Cria dicionário {nome_original -> letra} na ordem de aparição."""
-    nomes = list(pd.unique(pd.concat([res["EST"], res["PV"]], ignore_index=True)))
-    letras = list(string.ascii_uppercase)
-    mapa = {}
-    for i, nome in enumerate(nomes):
-        if i < len(letras):
-            mapa[str(nome)] = letras[i]
-        else:
-            # se acabar o alfabeto, mantém o nome original
-            mapa[str(nome)] = str(nome)
-    return mapa
-
-
 def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) -> pd.DataFrame:
     """
-    Tabela-resumo no formato da imagem enviada:
+    Tabela-resumo:
 
     EST | PV | Hz Médio | Hz Reduzido | Média das Séries (Hz) | Z Corrigido | Média das Séries (Z) | DH Médio
-    """
-    # Primeiro, reaproveita os resultados das tabelas anteriores
-    tab_hz = tabela_hz_por_serie(res)  # já tem Hz Médio, Hz Reduzido, Média das séries (Hz)
-    tab_z = tabela_z_por_serie(res)    # já tem Z Corrigido, Média das séries (Z)
 
-    # Junta Hz e Z pelo par (EST, PV)
+    Se renomear_para_letras=True, apenas substitui:
+      P1 -> A, P2 -> B, P3 -> C
+    (sem criar novas linhas ou novo mapeamento).
+    """
+    # Reaproveita resultados das tabelas de Hz e Z
+    tab_hz = tabela_hz_por_serie(res)  # Hz Médio, Hz Reduzido, Média das séries (Hz)
+    tab_z = tabela_z_por_serie(res)    # Z Corrigido, Média das séries (Z)
+
     hz_cols = ["Estação", "Ponto Visado", "Hz Médio", "Hz Reduzido", "Média das séries"]
     z_cols = ["Estação", "Ponto Visado", "Z Corrigido", "Média das séries"]
 
@@ -387,12 +375,13 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         how="outer",
     )
 
-    # Adiciona DH médio (em metros) a partir de res
+    # DH médio por (EST, PV)
     df_dh = res[["EST", "PV", "DH_med_m"]].copy()
     df_dh["DH_med_str"] = df_dh["DH_med_m"].apply(
         lambda x: f"{x:.3f}" if pd.notna(x) else ""
     )
     df_dh_grp = df_dh.groupby(["EST", "PV"], as_index=False)["DH_med_str"].first()
+
     resumo = resumo.merge(
         df_dh_grp,
         left_on=["Estação", "Ponto Visado"],
@@ -400,7 +389,7 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         how="left",
     )
 
-    # Renomeia colunas finais
+    # Seleciona e renomeia colunas de saída
     resumo = resumo[
         [
             "Estação",
@@ -419,11 +408,12 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         }
     )
 
-    # Renomear pontos para letras (A, B, C...) se solicitado
+    # ===== Renomear apenas P1, P2, P3 -> A, B, C =====
     if renomear_para_letras:
-        mapa = mapear_pontos_para_letras(res)
-        resumo["EST"] = resumo["Estação"].astype(str).map(mapa)
-        resumo["PV"] = resumo["Ponto Visado"].astype(str).map(mapa)
+        mapa_simples = {"P1": "A", "P2": "B", "P3": "C"}
+        resumo["EST"] = resumo["Estação"].astype(str).replace(mapa_simples)
+        resumo["PV"] = resumo["Ponto Visado"].astype(str).replace(mapa_simples)
+
         resumo = resumo[
             [
                 "EST",
@@ -437,6 +427,7 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
             ]
         ]
     else:
+        # Mantém os nomes originais
         resumo = resumo[
             [
                 "Estação",
@@ -549,8 +540,8 @@ def secao_modelo_e_upload():
     )
     template_df = pd.DataFrame(
         {
-            "EST": ["A", "A", "A", "A"],
-            "PV": ["B", "C", "B", "C"],
+            "EST": ["P1", "P1", "P1", "P1"],
+            "PV": ["P2", "P3", "P2", "P3"],
             "SEQ": [1, 1, 2, 2],
             "Hz_PD": ["00°00'00\"", "18°58'22\"", "00°01'01\"", "18°59'34\""],
             "Hz_PI": ["179°59'48\"", "198°58'14\"", "180°00'45\"", "198°59'24\""],
@@ -629,9 +620,19 @@ def secao_calculos(df_uso: pd.DataFrame):
 
     res = calcular_linha_a_linha(df_uso)
 
-    cols_linha = ["EST", "PV", "Hz_PD", "Hz_PI", "Hz_med_DMS",
-                  "Z_PD", "Z_PI", "Z_corr_DMS",
-                  "DH_PD_m", "DH_PI_m", "DH_med_m"]
+    cols_linha = [
+        "EST",
+        "PV",
+        "Hz_PD",
+        "Hz_PI",
+        "Hz_med_DMS",
+        "Z_PD",
+        "Z_PI",
+        "Z_corr_DMS",
+        "DH_PD_m",
+        "DH_PI_m",
+        "DH_med_m",
+    ]
     df_linha = res[cols_linha].copy()
     for c in ["DH_PD_m", "DH_PI_m", "DH_med_m"]:
         df_linha[c] = df_linha[c].apply(
@@ -684,10 +685,9 @@ def secao_calculos(df_uso: pd.DataFrame):
         """,
         unsafe_allow_html=True,
     )
-    usar_letras = st.checkbox(
-        "Renomear pontos EST/PV para letras (A, B, C, ...)", value=True
-    )
-    resumo = tabela_resumo_final(res, renomear_para_letras=usar_letras)
+
+    # Sempre aplicar mapeamento P1->A, P2->B, P3->C
+    resumo = tabela_resumo_final(res, renomear_para_letras=True)
     st.dataframe(resumo, use_container_width=True)
 
 
@@ -695,7 +695,7 @@ def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v8.0 — Inclui 7ª tabela resumo com Hz, Z e DH, com opção de renomear pontos para letras.</code>.
+            Versão do app: <code>UFPE_v9.0 — Inclui tabela resumo com Hz, Z e DH, mapeando P1→A, P2→B, P3→C.</code>.
         </p>
         """,
         unsafe_allow_html=True,
