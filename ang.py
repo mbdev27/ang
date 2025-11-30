@@ -1,5 +1,6 @@
 # app.py
-# Calculadora de Ângulos e Distâncias — UFPE (Hz/Z/DH + Ré/Vante + Polígono)
+# Calculadora de Ângulos e Distâncias — UFPE
+# Hz/Z/DH + Ré/Vante + Polígono com azimute de referência e identidade visual UFPE
 
 import io
 import math
@@ -17,18 +18,18 @@ st.set_page_config(
     page_icon="📐",
 )
 
-# ==================== Funções auxiliares ====================
+# ==================== Parâmetros globais ====================
 
 REQUIRED_COLS = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 
-# Convenção implícita do seu calcula_poligono.py
-# (qual ponto é Ré, qual é Vante, por estação)
+# Convenção implícita do seu calcula_poligono.py (Ré e Vante por estação)
 RE_VANTE_MAP: Dict[str, Tuple[str, str]] = {
     "P1": ("P2", "P3"),  # (Ré, Vante)
     "P2": ("P1", "P3"),
     "P3": ("P1", "P2"),
 }
 
+# ==================== Funções auxiliares de ângulo ====================
 
 def parse_angle_to_decimal(value: str) -> float:
     """
@@ -140,6 +141,8 @@ def mean_direction_list(angles_deg: pd.Series) -> float:
         ang += 360.0
     return ang
 
+
+# ==================== Pré-processamento do DataFrame ====================
 
 def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
     """
@@ -315,14 +318,12 @@ def agregar_por_par(res: pd.DataFrame) -> pd.DataFrame:
     return df_par
 
 
-def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> pd.DataFrame:
+def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Constrói tabela Horizontal com:
       EST, PV, Hz_PD, Hz_PI, Hz_Médio,
-      Hz_Ré, Hz_Vante, α (ré → vante)
-    usando RE_VANTE_MAP por estação.
+      e tabela de Hz_Ré, Hz_Vante, α (Ré → Vante) por estação.
     """
-    # Base: Hz médios por par
     hz_pd_med_dms = df_par["Hz_PD_med_deg"].apply(decimal_to_dms)
     hz_pi_med_dms = df_par["Hz_PI_med_deg"].apply(decimal_to_dms)
     hz_med_dms = df_par["Hz_med_deg_par"].apply(decimal_to_dms)
@@ -338,7 +339,7 @@ def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> pd.DataFrame:
         }
     )
 
-    # Agora montamos a tabela de Ré/Vante por estação
+    # Tabela de Ré/Vante por estação
     rows_re_vante = []
 
     for est, (pv_re, pv_vante) in RE_VANTE_MAP.items():
@@ -372,7 +373,6 @@ def construir_tabela_hz_com_re_vante(df_par: pd.DataFrame) -> pd.DataFrame:
 
     df_hz_re_vante = pd.DataFrame(rows_re_vante)
 
-    # Juntamos as duas visões: por par e por estação (Ré/Vante)
     return base, df_hz_re_vante
 
 
@@ -403,7 +403,7 @@ def tabela_medicao_angular_vertical(df_par: pd.DataFrame) -> pd.DataFrame:
     return tab
 
 
-# ---------- Cálculo de coordenadas (polígono) a partir de df_par ----------
+# ==================== Cálculo de coordenadas com azimute de referência ====================
 
 def delta_from_azimuth(az_deg: float, dh: float) -> Tuple[float, float]:
     """
@@ -416,22 +416,46 @@ def delta_from_azimuth(az_deg: float, dh: float) -> Tuple[float, float]:
     return de, dn
 
 
-def calcular_coordenadas(df_par: pd.DataFrame) -> pd.DataFrame:
+def calcular_azimutes_corrigidos(df_par: pd.DataFrame, az_ref_p1p2: float) -> pd.DataFrame:
     """
-    Usa Hz_med_deg_par como se fossem azimutes (graus 0..360) e DH_med_m_par
-    para calcular as coordenadas aproximadas dos pontos P1, P2, P3.
+    Ajusta Hz_med_deg_par para virar azimute, usando az_ref_p1p2 (P1→P2) como referência:
+      offset = az_ref_p1p2 - Hz_med(P1→P2)
+      Az_corrigido = (Hz_med + offset) mod 360
+    """
+    df_par = df_par.copy()
+
+    # encontra Hz médio para P1→P2
+    mask_p1p2 = (df_par["EST"] == "P1") & (df_par["PV"] == "P2")
+    if not mask_p1p2.any():
+        # se não tiver P1→P2, apenas trata Hz como se já fosse azimute
+        df_par["Az_corrigido_deg"] = df_par["Hz_med_deg_par"] % 360.0
+        df_par["Az_corrigido_DMS"] = df_par["Az_corrigido_deg"].apply(decimal_to_dms)
+        return df_par
+
+    hz_p1p2 = df_par.loc[mask_p1p2, "Hz_med_deg_par"].iloc[0]
+    offset = az_ref_p1p2 - hz_p1p2
+
+    df_par["Az_corrigido_deg"] = (df_par["Hz_med_deg_par"] + offset) % 360.0
+    df_par["Az_corrigido_DMS"] = df_par["Az_corrigido_deg"].apply(decimal_to_dms)
+
+    return df_par
+
+
+def calcular_coordenadas(df_par_az: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Tuple[float, float]]]:
+    """
+    Usa Az_corrigido_deg como azimute (graus 0..360) e DH_med_m_par
+    para calcular as coordenadas aproximadas dos pontos (P1, P2, P3...).
     Assume P1 = (0,0) e propaga pelas observações.
     """
     coords: Dict[str, Tuple[float, float]] = {}
     coords["P1"] = (0.0, 0.0)  # origem
 
-    # Monta um DF auxiliar com azimute e Dh médio
     aux_rows = []
-    for _, r in df_par.iterrows():
+    for _, r in df_par_az.iterrows():
         est = str(r["EST"])
         pv = str(r["PV"])
-        az = r["Hz_med_deg_par"]   # assumindo Hz médio como azimute
-        dh = r["DH_med_m_par"]     # distância horizontal média
+        az = r["Az_corrigido_deg"]
+        dh = r["DH_med_m_par"]
         if math.isnan(az) or math.isnan(dh):
             continue
         aux_rows.append({"EST": est, "PV": pv, "az_deg": az, "Dh_m": dh})
@@ -460,7 +484,6 @@ def calcular_coordenadas(df_par: pd.DataFrame) -> pd.DataFrame:
         if not changed:
             break
 
-    # Monta DataFrame de coordenadas finais
     rows = []
     for pt, (e, n) in coords.items():
         rows.append({"Ponto": pt, "E (m)": round(e, 3), "N (m)": round(n, 3)})
@@ -468,151 +491,265 @@ def calcular_coordenadas(df_par: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows), coords
 
 
+def angulo_interno(p_a, p_b, p_c) -> float:
+    """
+    Calcula o ângulo interno no vértice B (A-B-C) em graus.
+    """
+    ax, ay = p_a
+    bx, by = p_b
+    cx, cy = p_c
+
+    # vetores BA e BC
+    v1 = (ax - bx, ay - by)
+    v2 = (cx - bx, cy - by)
+
+    dot = v1[0] * v2[0] + v1[1] * v2[1]
+    n1 = math.hypot(v1[0], v1[1])
+    n2 = math.hypot(v2[0], v2[1])
+
+    if n1 == 0 or n2 == 0:
+        return float("nan")
+
+    cos_ang = dot / (n1 * n2)
+    cos_ang = max(min(cos_ang, 1.0), -1.0)
+    ang = math.degrees(math.acos(cos_ang))
+    return ang
+
+
 def desenhar_poligono(coords: Dict[str, Tuple[float, float]]):
     """
-    Desenha o triângulo P1–P2–P3 (se existirem) a partir de coords.
+    Desenha o triângulo P1–P2–P3 (se existirem) com rótulos de lados e ângulos internos.
     """
-    pts_ordem = ["P1", "P2", "P3", "P1"]
-    xs = []
-    ys = []
-    labels = []
-
-    for p in pts_ordem:
-        if p in coords:
-            e, n = coords[p]
-            xs.append(e)
-            ys.append(n)
-            labels.append(p)
-
-    if len(xs) < 2:
-        st.info("Coordenadas insuficientes para desenhar o polígono.")
+    must_pts = ["P1", "P2", "P3"]
+    if not all(p in coords for p in must_pts):
+        st.info("Coordenadas insuficientes para desenhar o triângulo P1–P2–P3.")
         return
 
-    fig, ax = plt.subplots()
-    ax.plot(xs, ys, "-o", color="#990000", lw=2, markersize=8)
+    p1 = coords["P1"]
+    p2 = coords["P2"]
+    p3 = coords["P3"]
 
-    for (x, y, lab) in zip(xs, ys, labels):
-        ax.text(x, y, f" {lab}", fontsize=10, color="#111827")
+    # Distâncias
+    d12 = math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+    d23 = math.hypot(p3[0] - p2[0], p3[1] - p2[1])
+    d31 = math.hypot(p1[0] - p3[0], p1[1] - p3[1])
+
+    # Ângulos internos
+    ang_p1 = angulo_interno(p2, p1, p3)
+    ang_p2 = angulo_interno(p1, p2, p3)
+    ang_p3 = angulo_interno(p1, p3, p2)
+
+    xs = [p1[0], p2[0], p3[0], p1[0]]
+    ys = [p1[1], p2[1], p3[1], p1[1]]
+
+    fig, ax = plt.subplots()
+    ax.plot(xs, ys, "-o", color="#8B0000", lw=2.3, markersize=8)
+
+    # rótulos dos pontos
+    ax.text(p1[0], p1[1], " P1", fontsize=10, color="#111827")
+    ax.text(p2[0], p2[1], " P2", fontsize=10, color="#111827")
+    ax.text(p3[0], p3[1], " P3", fontsize=10, color="#111827")
+
+    # rótulos dos lados (meio de cada segmento)
+    def meio(a, b):
+        return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+
+    m12 = meio(p1, p2)
+    m23 = meio(p2, p3)
+    m31 = meio(p3, p1)
+
+    ax.text(m12[0], m12[1], f"{d12:.3f} m", fontsize=9, color="#990000")
+    ax.text(m23[0], m23[1], f"{d23:.3f} m", fontsize=9, color="#990000")
+    ax.text(m31[0], m31[1], f"{d31:.3f} m", fontsize=9, color="#990000")
+
+    # rótulos dos ângulos próximos aos vértices
+    ax.text(p1[0], p1[1], f"\n∠P1 ≈ {ang_p1:.2f}°", fontsize=9, color="#1f2937")
+    ax.text(p2[0], p2[1], f"\n∠P2 ≈ {ang_p2:.2f}°", fontsize=9, color="#1f2937")
+    ax.text(p3[0], p3[1], f"\n∠P3 ≈ {ang_p3:.2f}°", fontsize=9, color="#1f2937")
 
     ax.set_aspect("equal", "box")
     ax.set_xlabel("E (m)")
     ax.set_ylabel("N (m)")
-    ax.set_title("Polígono aproximado P1–P2–P3")
+    ax.set_title("Polígono aproximado P1–P2–P3 (distâncias e ângulos internos)")
     ax.grid(True, linestyle="--", alpha=0.3)
 
     st.pyplot(fig)
 
+    # tabela resumo de distâncias e ângulos
+    st.markdown("**Resumo dos lados e ângulos internos:**")
+    df_ang = pd.DataFrame(
+        {
+            "Lado": ["P1–P2", "P2–P3", "P3–P1"],
+            "Distância (m)": [round(d12, 3), round(d23, 3), round(d31, 3)],
+        }
+    )
+    df_int = pd.DataFrame(
+        {
+            "Vértice": ["P1", "P2", "P3"],
+            "Ângulo interno (°)": [round(ang_p1, 2), round(ang_p2, 2), round(ang_p3, 2)],
+        }
+    )
+    col_lados, col_angs = st.columns(2)
+    with col_lados:
+        st.dataframe(df_ang, use_container_width=True)
+    with col_angs:
+        st.dataframe(df_int, use_container_width=True)
 
-# ==================== CSS e layout visual UFPE ====================
+
+# ==================== CSS e identidade visual UFPE ====================
 
 CUSTOM_CSS = """
 <style>
 body, .stApp {
-    background: radial-gradient(circle at top left, #faf5f5 0%, #f7f5f5 45%, #f4f4f4 100%);
+    background:
+        radial-gradient(circle at top left, #fcecea 0%, #f9f1f1 28%, #f4f4f4 55%, #eceff1 100%);
     color: #111827;
     font-family: "Trebuchet MS", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
+
+/* Cartão principal */
 .main-card {
-    background: linear-gradient(145deg, #ffffff 0%, #fdfbfb 40%, #ffffff 100%);
-    border-radius: 18px;
-    padding: 1.8rem 2.1rem;
-    border: 1px solid #e5e7eb;
+    background:
+        linear-gradient(145deg, rgba(255,255,255,0.98) 0%, #fdf7f7 40%, #ffffff 100%);
+    border-radius: 22px;
+    padding: 1.8rem 2.1rem 1.4rem 2.1rem;
+    border: 1px solid rgba(148,27,37,0.20);
     box-shadow:
-        0 18px 40px rgba(15, 23, 42, 0.22),
-        0 0 0 1px rgba(15, 23, 42, 0.03);
+        0 22px 46px rgba(15, 23, 42, 0.23),
+        0 0 0 1px rgba(15, 23, 42, 0.04);
+    max-width: 1280px;
+    margin: 1.2rem auto 2.0rem auto;
 }
+
+/* Faixa superior em degradê vermelho */
 .ufpe-top-bar {
     width: 100%;
-    height: 8px;
-    border-radius: 0 0 14px 14px;
-    background: linear-gradient(90deg, #5b0000 0%, #990000 52%, #5b0000 100%);
-    margin-bottom: 0.9rem;
+    min-height: 10px;
+    border-radius: 0 0 16px 16px;
+    background:
+        linear-gradient(90deg, #4b0000 0%, #7e0000 30%, #b30000 60%, #4b0000 100%);
+    margin-bottom: 1.0rem;
 }
+
+/* Texto do cabeçalho institucional */
 .ufpe-header-text {
-    font-size: 0.78rem;
-    line-height: 1.15rem;
+    font-size: 0.8rem;
+    line-height: 1.18rem;
     text-transform: uppercase;
     color: #111827;
 }
 .ufpe-header-text strong {
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
 }
+
+/* Linha separadora */
 .ufpe-separator {
     border: none;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid rgba(148,27,37,0.35);
     margin: 0.8rem 0 1.0rem 0;
 }
+
+/* Título principal */
 .app-title {
     font-size: 2.0rem;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: 0.03em;
     display: flex;
     align-items: center;
     gap: 0.65rem;
     margin-bottom: 0.35rem;
-    color: #111827;
+    color: #7f0000;
 }
 .app-title span.icon {
     font-size: 2.4rem;
 }
+
+/* Subtítulo */
 .app-subtitle {
-    font-size: 0.95rem;
-    color: #4b5563;
-    margin-bottom: 0.9rem;
+    font-size: 0.96rem;
+    color: #374151;
+    margin-bottom: 1.0rem;
 }
+
+/* Títulos de seção */
 .section-title {
-    font-size: 1.02rem;
-    font-weight: 600;
-    margin-top: 1.6rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-top: 1.7rem;
     margin-bottom: 0.6rem;
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    color: #111827;
+    color: #8b0000;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 .section-title span.dot {
-    width: 7px;
-    height: 7px;
+    width: 9px;
+    height: 9px;
     border-radius: 999px;
-    background: radial-gradient(circle at 30% 30%, #ffffff 0%, #990000 40%, #111827 100%);
+    background:
+        radial-gradient(circle at 30% 30%, #ffffff 0%, #ffbdbd 35%, #7f0000 90%);
 }
+
+/* Caixinha de ajuda */
 .helper-box {
-    border-radius: 12px;
-    padding: 0.6rem 0.85rem;
-    background: linear-gradient(135deg, #fdf2f2 0%, #fff5f5 40%, #fdf2f2 100%);
-    border: 1px solid rgba(153, 0, 0, 0.25);
-    font-size: 0.83rem;
-    color: #4b5563;
-    margin-bottom: 0.7rem;
+    border-radius: 14px;
+    padding: 0.7rem 0.9rem;
+    background:
+        linear-gradient(135deg, #fff5f5 0%, #ffe7e7 40%, #fffafa 100%);
+    border: 1px solid rgba(148,27,37,0.38);
+    font-size: 0.85rem;
+    color: #374151;
+    margin-bottom: 0.8rem;
 }
+
+/* Rodapé */
 .footer-text {
     font-size: 0.75rem;
     color: #6b7280;
 }
+
+/* Tabelas e dataframes */
 [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
-    background: linear-gradient(145deg, #ffffff 0%, #f9fafb 60%, #ffffff 100%) !important;
-    border-radius: 12px;
-    border: 1px solid #e5e7eb;
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+    background:
+        linear-gradient(145deg, #ffffff 0%, #f9fafb 50%, #fffdfd 100%) !important;
+    border-radius: 14px;
+    border: 1px solid rgba(148,27,37,0.22);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
 }
+
 [data-testid="stDataFrame"] thead tr {
-    background: linear-gradient(90deg, #f5e6e8 0%, #fdf2f2 100%) !important;
-    color: #5b101d !important;
-    font-weight: 600;
+    background:
+        linear-gradient(90deg, #fbe5e7 0%, #fcd7dd 50%, #fbe5e7 100%) !important;
+    color: #4b0000 !important;
+    font-weight: 700;
 }
 [data-testid="stDataFrame"] tbody tr:nth-child(odd) {
-    background-color: #fafafa !important;
+    background-color: #fdfbfb !important;
 }
 [data-testid="stDataFrame"] tbody tr:nth-child(even) {
     background-color: #ffffff !important;
 }
 [data-testid="stDataFrame"] tbody tr:hover {
-    background-color: #f3f0f0 !important;
+    background-color: #f3eff0 !important;
+}
+
+/* Campos de entrada flutuando sobre fundo */
+.stTextInput, .stNumberInput, .stDateInput, .stFileUploader {
+    background:
+        linear-gradient(135deg, #ffffff 0%, #f9f7f7 40%, #ffffff 100%) !important;
+}
+
+/* Forçar identidade independente do tema do navegador */
+:root {
+    color-scheme: light;
 }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
+# ==================== Cabeçalho UFPE ====================
 
 def cabecalho_ufpe():
     with st.container():
@@ -644,13 +781,13 @@ def cabecalho_ufpe():
 
         col1, col2, col3 = st.columns([2, 2, 2])
         with col1:
-            prof = st.text_input("Professor(a)", value="")
-            local = st.text_input("Local", value="")
+            st.text_input("Professor(a)", value="")
+            st.text_input("Local", value="")
         with col2:
-            equip = st.text_input("Equipamento", value="")
-            patrimonio = st.text_input("Patrimônio", value="")
+            st.text_input("Equipamento", value="")
+            st.text_input("Patrimônio", value="")
         with col3:
-            data_campo = st.date_input("Data", format="DD/MM/YYYY")
+            st.date_input("Data", format="DD/MM/YYYY")
 
         st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
 
@@ -662,7 +799,8 @@ def cabecalho_ufpe():
                 <span>Calculadora de Ângulos e Distâncias</span>
             </div>
             <div class="app-subtitle">
-                Cálculo da média das direções Hz, ângulo vertical (Z), distâncias horizontais e coordenadas aproximadas do polígono.
+                Cálculo da média das direções Hz, ângulo vertical (Z), distâncias horizontais,
+                Hz reduzido (Ré/Vante) e coordenadas aproximadas do polígono P1–P2–P3.
             </div>
             """,
             unsafe_allow_html=True,
@@ -680,6 +818,8 @@ def cabecalho_ufpe():
             unsafe_allow_html=True,
         )
 
+
+# ==================== Seção modelo e upload ====================
 
 def secao_modelo_e_upload():
     st.markdown(
@@ -759,6 +899,8 @@ def processar_upload(uploaded):
     else:
         return df_valid[REQUIRED_COLS].copy()
 
+
+# ==================== Seção de cálculos principais ====================
 
 def secao_calculos(df_uso: pd.DataFrame):
     st.markdown(
@@ -845,22 +987,54 @@ def secao_calculos(df_uso: pd.DataFrame):
     tab_z = tabela_medicao_angular_vertical(df_par)
     st.dataframe(tab_z, use_container_width=True)
 
-    # Seção de coordenadas e polígono
+    # ==================== Azimute de referência e polígono ====================
     st.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
-            <span>4. Coordenadas aproximadas dos pontos e polígono P1–P2–P3</span>
+            <span>4. Azimute de referência e polígono P1–P2–P3</span>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    df_coords, coords_dict = calcular_coordenadas(df_par)
+    st.markdown(
+        """
+        Informe o <b>azimute conhecido</b> da direção <code>P1 → P2</code> (em graus, 0° no Norte, sentido horário).
+        O programa alinhará o Hz médio dessa direção a esse azimute e aplicará o mesmo ajuste
+        às demais direções, gerando coordenadas coerentes com o seu levantamento.
+        """,
+        unsafe_allow_html=True,
+    )
+
+    az_ref_p1p2 = st.number_input(
+        "Azimute conhecido de P1 → P2 (graus, 0 ≤ Az < 360)",
+        min_value=0.0,
+        max_value=359.9999,
+        value=0.0,
+        step=0.0001,
+    )
+
+    df_par_az = calcular_azimutes_corrigidos(df_par, az_ref_p1p2)
+
+    st.markdown("**Direções médias com azimute corrigido:**")
+    df_show_az = df_par_az[["EST", "PV", "Hz_med_DMS_par", "Az_corrigido_DMS", "DH_med_m_par"]].copy()
+    df_show_az.rename(
+        columns={
+            "Hz_med_DMS_par": "Hz Médio (PD/PI)",
+            "Az_corrigido_DMS": "Azimute corrigido",
+            "DH_med_m_par": "DH médio (m)",
+        },
+        inplace=True,
+    )
+    st.dataframe(df_show_az, use_container_width=True)
+
+    df_coords, coords_dict = calcular_coordenadas(df_par_az)
+
     st.markdown("**Coordenadas aproximadas (origem em P1 = 0,0):**")
     st.dataframe(df_coords, use_container_width=True)
 
-    st.markdown("**Polígono aproximado P1–P2–P3:**")
+    st.markdown("**Polígono aproximado P1–P2–P3 com lados e ângulos internos:**")
     desenhar_poligono(coords_dict)
 
 
@@ -868,7 +1042,7 @@ def rodape():
     st.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v2.0 — Hz/Z, Ré/Vante, coordenadas e polígono com identidade visual UFPE.</code>.
+            Versão do app: <code>UFPE_v2.1 — Hz/Z, Ré/Vante, azimute de referência, coordenadas e polígono com identidade visual UFPE.</code>.
         </p>
         """,
         unsafe_allow_html=True,
