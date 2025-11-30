@@ -1,5 +1,5 @@
 # app.py
-# Média das Direções (Hz) + DH/DN - UFPE
+# Média das Direções (Hz) + DH/DN - UFPE + Croqui P1-P2-P3
 # Rode com: streamlit run app.py
 
 import streamlit as st
@@ -8,6 +8,7 @@ import numpy as np
 import io
 import re
 import math
+import matplotlib.pyplot as plt
 
 # -------------------- Configuração da página --------------------
 st.set_page_config(
@@ -19,14 +20,11 @@ st.set_page_config(
 # -------------------- Estilos customizados (cores UFPE + degradês) --------------------
 CUSTOM_CSS = """
 <style>
-/* Fundo geral com leve degradê, independente do modo claro/escuro do navegador */
 body, .stApp {
     background: radial-gradient(circle at top left, #faf5f5 0%, #f7f5f5 45%, #f4f4f4 100%);
     color: #111827;
     font-family: "Trebuchet MS", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
-
-/* Container principal em forma de cartão */
 .main-card {
     background: linear-gradient(145deg, #ffffff 0%, #fdfbfb 40%, #ffffff 100%);
     border-radius: 18px;
@@ -36,8 +34,6 @@ body, .stApp {
         0 18px 40px rgba(15, 23, 42, 0.22),
         0 0 0 1px rgba(15, 23, 42, 0.03);
 }
-
-/* Faixa superior bordô com leve brilho */
 .ufpe-top-bar {
     width: 100%;
     height: 8px;
@@ -45,8 +41,6 @@ body, .stApp {
     background: linear-gradient(90deg, #5b0000 0%, #990000 52%, #5b0000 100%);
     margin-bottom: 0.9rem;
 }
-
-/* Header UFPE */
 .ufpe-header-text {
     font-size: 0.78rem;
     line-height: 1.15rem;
@@ -61,8 +55,6 @@ body, .stApp {
     border-top: 1px solid #e5e7eb;
     margin: 0.8rem 0 1.0rem 0;
 }
-
-/* Título do app */
 .app-title {
     font-size: 2.0rem;
     font-weight: 700;
@@ -76,15 +68,11 @@ body, .stApp {
 .app-title span.icon {
     font-size: 2.4rem;
 }
-
-/* Subtítulo */
 .app-subtitle {
     font-size: 0.95rem;
     color: #4b5563;
     margin-bottom: 0.9rem;
 }
-
-/* Section titles */
 .section-title {
     font-size: 1.02rem;
     font-weight: 600;
@@ -101,8 +89,6 @@ body, .stApp {
     border-radius: 999px;
     background: radial-gradient(circle at 30% 30%, #ffffff 0%, #990000 40%, #111827 100%);
 }
-
-/* Caixa de ajuda */
 .helper-box {
     border-radius: 12px;
     padding: 0.6rem 0.85rem;
@@ -112,14 +98,10 @@ body, .stApp {
     color: #4b5563;
     margin-bottom: 0.7rem;
 }
-
-/* Rodapé */
 .footer-text {
     font-size: 0.75rem;
     color: #6b7280;
 }
-
-/* Download buttons */
 .stDownloadButton > button {
     border-radius: 999px;
     border: 1px solid #990000;
@@ -134,23 +116,17 @@ body, .stApp {
     border-color: #111827;
     background: linear-gradient(135deg, #111827, #4b0000);
 }
-
-/* Tabelas e editores em cartões */
 [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
     background: linear-gradient(145deg, #ffffff 0%, #f9fafb 60%, #ffffff 100%) !important;
     border-radius: 12px;
     border: 1px solid #e5e7eb;
     box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
 }
-
-/* Cabeçalho das tabelas */
 [data-testid="stDataFrame"] thead tr {
     background: linear-gradient(90deg, #f5e6e8 0%, #fdf2f2 100%) !important;
     color: #5b101d !important;
     font-weight: 600;
 }
-
-/* Linhas alternadas */
 [data-testid="stDataFrame"] tbody tr:nth-child(odd) {
     background-color: #fafafa !important;
 }
@@ -160,22 +136,16 @@ body, .stApp {
 [data-testid="stDataFrame"] tbody tr:hover {
     background-color: #f3f0f0 !important;
 }
-
-/* Código da saída (se usado) */
 [data-testid="stCodeBlock"] {
     border-radius: 12px;
     border: 1px solid #e5e7eb;
     background: #f9fafb !important;
 }
-
-/* Labels dos inputs */
 .stTextInput label, .stFileUploader label {
     font-size: 0.86rem;
     font-weight: 600;
     color: #374151;
 }
-
-/* Inputs com leve degradê e bordas suaves */
 .stTextInput input {
     background: linear-gradient(145deg, #ffffff, #f9fafb) !important;
     color: #111827 !important;
@@ -188,8 +158,6 @@ body, .stApp {
     border-color: #a32a36 !important;
     box-shadow: 0 0 0 1px rgba(163,42,54,0.25);
 }
-
-/* Botões "pill" com degradê */
 .stButton button {
     background: linear-gradient(135deg, #a32a36, #7d1220) !important;
     color: #ffffff !important;
@@ -204,14 +172,10 @@ body, .stApp {
     background: linear-gradient(135deg, #7d1220, #5a0d18) !important;
     box-shadow: 0 4px 12px rgba(90,13,24,0.35);
 }
-
-/* Expander header */
 .streamlit-expanderHeader {
     font-weight: 600;
     color: #7d1220 !important;
 }
-
-/* Alertas arredondados */
 .stAlert {
     border-radius: 10px;
 }
@@ -224,7 +188,6 @@ with st.container():
     st.markdown('<div class="main-card">', unsafe_allow_html=True)
     st.markdown('<div class="ufpe-top-bar"></div>', unsafe_allow_html=True)
 
-    # ---- Bloco UFPE + informações do curso ----
     col_logo, col_info = st.columns([1, 5])
 
     with col_logo:
@@ -247,7 +210,6 @@ with st.container():
             unsafe_allow_html=True,
         )
 
-        # Campos vazios e preenchíveis
         col_prof, col_local, col_equip, col_data, col_patr = st.columns(
             [1.6, 1.4, 1.6, 1.1, 1.2]
         )
@@ -259,7 +221,6 @@ with st.container():
 
     st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
 
-    # ---- Título do app ----
     st.markdown(
         """
         <div class="app-title">
@@ -267,8 +228,8 @@ with st.container():
             <span>Média das Direções (Hz) — Estação Total</span>
         </div>
         <div class="app-subtitle">
-            Cálculo da média das direções Hz e das distâncias horizontais/níveis
-            a partir de leituras PD e PI, com validação automática da planilha de campo.
+            Cálculo da média das direções Hz, distâncias horizontais / diferenças de nível
+            e croqui plano aproximado para representar espacialmente P1, P2 e P3.
         </div>
         """,
         unsafe_allow_html=True,
@@ -289,7 +250,7 @@ with st.container():
         unsafe_allow_html=True,
     )
 
-# -------------------- Template Excel para download -------------------------
+    # -------- 1. Modelo Excel ----------
     st.markdown(
         """
         <div class="section-title">
@@ -322,7 +283,7 @@ with st.container():
         key="download_excel_model"
     )
 
-# -------------------- Upload de arquivo -------------------------
+    # -------- 2. Upload ----------
     st.markdown(
         """
         <div class="section-title">
@@ -339,12 +300,11 @@ with st.container():
         help="Use o modelo disponibilizado acima para evitar problemas de formatação."
     )
 
-# -------------------- Funções auxiliares de ângulo --------------------------
+# -------------------- Funções auxiliares --------------------------
 angle_re = re.compile(r"(-?\d+)[^\d\-]+(\d+)[^\d\-]+(\d+(?:[.,]\d+)?)")
 num_re = re.compile(r"^-?\d+(?:[.,]\d+)?$")
 
 def parse_angle_to_decimal(x):
-    """Aceita DMS (ex: 89°48'20\" ou 89 48 20 ou 89:48:20) ou decimal (89.8056)."""
     if pd.isna(x):
         return np.nan
     if isinstance(x, (int, float)):
@@ -362,7 +322,6 @@ def parse_angle_to_decimal(x):
     )
     s = re.sub(r"\s+", " ", s)
 
-    # Tenta DMS explícito
     m = angle_re.search(s)
     if m:
         deg = float(m.group(1))
@@ -371,11 +330,9 @@ def parse_angle_to_decimal(x):
         sign = -1 if deg < 0 else 1
         return sign * (abs(deg) + minu/60.0 + sec/3600.0)
 
-    # Decimal puro
     if num_re.match(s.replace(" ", "")):
         return float(s.replace(",", "."))
 
-    # D M S separados
     nums = re.findall(r"-?\d+(?:[.,]\d+)?", s)
     if len(nums) == 3:
         deg, minu, sec = nums
@@ -405,7 +362,6 @@ def decimal_to_dms(angle):
     return f"{g:02d}°{m:02d}'{s:02d}\""
 
 def mean_direction_deg(a_deg, b_deg):
-    """Média vetorial de duas direções em graus."""
     if pd.isna(a_deg) or pd.isna(b_deg):
         return np.nan
     a_rad = math.radians(a_deg)
@@ -417,16 +373,13 @@ def mean_direction_deg(a_deg, b_deg):
     ang = math.degrees(math.atan2(y, x))
     return ang % 360.0
 
-# -------------------- Validação do DataFrame ------------------------
 required_cols = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 
 def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
-    """Permite alguns nomes próximos e normaliza para o padrão exigido."""
     df = df_original.copy()
     colmap = {}
     for c in df.columns:
         low = c.strip().lower()
-
         if low in ["est", "estacao", "estação"]:
             colmap[c] = "EST"
         elif low in ["pv", "ponto visado", "ponto_visado", "ponto"]:
@@ -445,29 +398,22 @@ def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
             colmap[c] = "DI_PI"
         else:
             colmap[c] = c
-
     df = df.rename(columns=colmap)
     return df
 
 def validar_dataframe(df_original: pd.DataFrame):
     erros = []
-
     df = normalizar_colunas(df_original)
 
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
-        erros.append(
-            "Colunas obrigatórias ausentes: " + ", ".join(missing)
-        )
+        erros.append("Colunas obrigatórias ausentes: " + ", ".join(missing))
 
-    # Garante colunas (vazias) para edição, mesmo se faltarem
     for c in required_cols:
         if c not in df.columns:
             df[c] = ""
 
-    # Checa ângulos
-    invalid_rows_hz = []
-    invalid_rows_z = []
+    invalid_rows_hz, invalid_rows_z, invalid_rows_di = [], [], []
     for idx, row in df.iterrows():
         hz_pd = parse_angle_to_decimal(row.get("Hz_PD", ""))
         hz_pi = parse_angle_to_decimal(row.get("Hz_PI", ""))
@@ -477,6 +423,14 @@ def validar_dataframe(df_original: pd.DataFrame):
             invalid_rows_hz.append(idx + 1)
         if pd.isna(z_pd) or pd.isna(z_pi):
             invalid_rows_z.append(idx + 1)
+        try:
+            di_pd = float(str(row.get("DI_PD", "")).replace(",", "."))
+            di_pi = float(str(row.get("DI_PI", "")).replace(",", "."))
+            if pd.isna(di_pd) or pd.isna(di_pi):
+                invalid_rows_di.append(idx + 1)
+        except Exception:
+            invalid_rows_di.append(idx + 1)
+
     if invalid_rows_hz:
         erros.append(
             "Valores inválidos ou vazios em Hz_PD / Hz_PI nas linhas: "
@@ -487,18 +441,6 @@ def validar_dataframe(df_original: pd.DataFrame):
             "Valores inválidos ou vazios em Z_PD / Z_PI nas linhas: "
             + ", ".join(map(str, invalid_rows_z)) + "."
         )
-
-    # Checa distâncias
-    invalid_rows_di = []
-    for idx, row in df.iterrows():
-        try:
-            di_pd = float(str(row.get("DI_PD", "")).replace(",", "."))
-            di_pi = float(str(row.get("DI_PI", "")).replace(",", "."))
-        except Exception:
-            invalid_rows_di.append(idx + 1)
-            continue
-        if pd.isna(di_pd) or pd.isna(di_pi):
-            invalid_rows_di.append(idx + 1)
     if invalid_rows_di:
         erros.append(
             "Valores inválidos ou vazios em DI_PD / DI_PI nas linhas: "
@@ -525,15 +467,11 @@ if uploaded is not None:
         st.dataframe(df_valid[required_cols], use_container_width=True)
 
         if erros:
-            st.error(
-                "Não foi possível calcular diretamente devido aos seguintes problemas:"
-            )
+            st.error("Não foi possível calcular diretamente devido aos seguintes problemas:")
             for e in erros:
                 st.markdown(f"- {e}")
 
-            st.markdown(
-                "### Corrija os dados abaixo e clique em *Aplicar correções*"
-            )
+            st.markdown("### Corrija os dados abaixo e clique em *Aplicar correções*")
             edited_df = st.data_editor(
                 df_valid[required_cols],
                 num_rows="dynamic",
@@ -556,7 +494,8 @@ if uploaded is not None:
     except Exception as e:
         st.error(f"Erro ao ler o arquivo: {e}")
 
-# -------------------- Cálculos Hz, DH, DN ------------------------
+# -------------------- Cálculos Hz, DH, DN + Ré/Vante ------------------------
+res = None
 if df_uso is not None:
     st.markdown(
         """
@@ -570,29 +509,38 @@ if df_uso is not None:
 
     res = df_uso.copy()
 
-    # Marca Ré/Vante: aqui estou considerando que PV = P1 é Ré
-    res["Tipo"] = res["PV"].apply(lambda pv: "Ré" if str(pv).strip().upper() == "P1" else "Vante")
+    # dicionário: para cada estação, qual PV é a Ré
+    ref_por_estacao = {
+        "P1": "P2",
+        "P2": "P1",
+        "P3": "P1",
+    }
 
-    # Converte ângulos para graus decimais
+    def classificar_re_vante(est, pv):
+        est_ = str(est).strip().upper()
+        pv_  = str(pv).strip().upper()
+        ref  = ref_por_estacao.get(est_)
+        if ref is None:
+            return ""
+        return "Ré" if pv_ == ref else "Vante"
+
+    res["Tipo"] = res.apply(lambda r: classificar_re_vante(r["EST"], r["PV"]), axis=1)
+
     for col in ["Hz_PD", "Hz_PI", "Z_PD", "Z_PI"]:
         res[col + "_deg"] = res[col].apply(parse_angle_to_decimal)
 
-    # Hz médio (média vetorial)
     res["Hz_med_deg"] = res.apply(
         lambda r: mean_direction_deg(r["Hz_PD_deg"], r["Hz_PI_deg"]),
         axis=1
     )
     res["Hz_med_DMS"] = res["Hz_med_deg"].apply(decimal_to_dms)
 
-    # Distâncias inclinadas
     res["DI_PD_m"] = res["DI_PD"].apply(lambda x: float(str(x).replace(",", ".")))
     res["DI_PI_m"] = res["DI_PI"].apply(lambda x: float(str(x).replace(",", ".")))
 
-    # Z -> radianos (zenital)
     z_pd_rad = res["Z_PD_deg"] * np.pi / 180.0
     z_pi_rad = res["Z_PI_deg"] * np.pi / 180.0
 
-    # Distância horizontal e diferença de nível
     res["DH_PD_m"] = (res["DI_PD_m"] * np.sin(z_pd_rad)).round(3)
     res["DN_PD_m"] = (res["DI_PD_m"] * np.cos(z_pd_rad)).round(3)
     res["DH_PI_m"] = (res["DI_PI_m"] * np.sin(z_pi_rad)).round(3)
@@ -601,11 +549,10 @@ if df_uso is not None:
     res["DH_med_m"] = ((res["DH_PD_m"] + res["DH_PI_m"]) / 2.0).round(3)
     res["DN_med_m"] = ((res["DN_PD_m"] + res["DN_PI_m"]) / 2.0).round(3)
 
-    # ----------------- Tabela resumo (Hz e distâncias) -----------------
     resumo_df = pd.DataFrame({
         "EST": res["EST"],
         "PV": res["PV"],
-        "Tipo": res["Tipo"],                 # <<< Ré / Vante
+        "Tipo": res["Tipo"],
         "Hz_PD": res["Hz_PD"],
         "Hz_PI": res["Hz_PI"],
         "Hz_médio (DMS)": res["Hz_med_DMS"].fillna(""),
@@ -619,9 +566,7 @@ if df_uso is not None:
 
     st.dataframe(resumo_df, use_container_width=True)
 
-    # ----------------- Download da saída -------------------------
-    out_df = resumo_df.copy()
-    out_csv = out_df.to_csv(index=False).encode("utf-8-sig")
+    out_csv = resumo_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
         "📥 Baixar resultados (CSV)",
         data=out_csv,
@@ -630,13 +575,101 @@ if df_uso is not None:
         key="download_saida_csv"
     )
 
+# -------------------- 4. Croqui gráfico P1–P2–P3 ------------------------
+if res is not None:
+    st.markdown(
+        """
+        <div class="section-title">
+            <span class="dot"></span>
+            <span>4. Croqui gráfico (P1, P2 e P3)</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        Representação plana aproximada da relação espacial entre P1, P2 e P3,
+        usando as direções e distâncias horizontais médias a partir das estações.
+        Considera P1 em (0,0) e posiciona P2 e P3 de acordo com as médias das visadas.
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Seleciona apenas linhas com Hz e DH médios válidos
+    valid = res.dropna(subset=["Hz_med_deg", "DH_med_m"]).copy()
+    if valid.empty:
+        st.info("Não há dados suficientes (Hz_médio e DH_médio) para gerar o croqui.")
+    else:
+        # P1 fixo em (0, 0)
+        coords = {"P1": (0.0, 0.0)}
+
+        # Função auxiliar: se conheço EST, calculo PV
+        def atualizar_coord(est, pv, dh, hz_deg):
+            est_ = str(est).strip().upper()
+            pv_  = str(pv).strip().upper()
+            if est_ not in coords:
+                return
+            x_est, y_est = coords[est_]
+            # Convenção: Hz = 0° no eixo Y positivo, aumentando no sentido horário
+            az = math.radians(hz_deg)
+            dx = dh * math.sin(az)
+            dy = dh * math.cos(az)
+            x_pv = x_est + dx
+            y_pv = y_est + dy
+            if pv_ in coords:
+                # média simples se já existir
+                x_old, y_old = coords[pv_]
+                coords[pv_] = ((x_old + x_pv) / 2.0, (y_old + y_pv) / 2.0)
+            else:
+                coords[pv_] = (x_pv, y_pv)
+
+        # usa leituras a partir de P1 para determinar P2 e P3
+        for _, r in valid.iterrows():
+            est = str(r["EST"]).strip().upper()
+            pv  = str(r["PV"]).strip().upper()
+            if est == "P1":  # focamos nas visadas a partir de P1
+                atualizar_coord(est, pv, r["DH_med_m"], r["Hz_med_deg"])
+
+        # Se ainda assim não obtive P2 ou P3, tento usar outras estações
+        # como reforço (ex: P2→P1, P3→P1) para amarrar o triângulo
+        if "P2" not in coords or "P3" not in coords:
+            for _, r in valid.iterrows():
+                est = str(r["EST"]).strip().upper()
+                pv  = str(r["PV"]).strip().upper()
+                # se conheço EST, posso posicionar PV
+                atualizar_coord(est, pv, r["DH_med_m"], r["Hz_med_deg"])
+
+        # Plot
+        fig, ax = plt.subplots(figsize=(5, 5))
+
+        # Desenha segmentos entre pares P1–P2, P1–P3, P2–P3 se disponíveis
+        pares = [("P1", "P2"), ("P1", "P3"), ("P2", "P3")]
+        for a, b in pares:
+            if a in coords and b in coords:
+                xa, ya = coords[a]
+                xb, yb = coords[b]
+                ax.plot([xa, xb], [ya, yb], "-k", linewidth=1.3, alpha=0.8)
+
+        # Desenha os pontos
+        for nome, (x, y) in coords.items():
+            cor = "darkred" if nome == "P1" else "navy"
+            ax.scatter(x, y, color=cor, s=40, zorder=3)
+            ax.text(x, y, f" {nome}", fontsize=10, va="bottom", ha="left")
+
+        ax.set_aspect("equal", "box")
+        ax.set_xlabel("X local (m)")
+        ax.set_ylabel("Y local (m)")
+        ax.set_title("Croqui plano aproximado do triângulo P1–P2–P3")
+        ax.grid(True, linestyle="--", alpha=0.4)
+
+        st.pyplot(fig)
+
 # -------------------- Rodapé -------------------------
 st.markdown(
     """
     <p class="footer-text">
-        Versão do app: <code>3.1 — Hz + DH/DN (modelo UFPE, degradês, Ré/Vante)</code>.<br>
-        Para gerar/baixar o modelo Excel (.xlsx) no servidor,
-        certifique-se de incluir <code>openpyxl</code> no <code>requirements.txt</code>.
+        Versão do app: <code>4.0 — Hz + DH/DN + Ré/Vante + Croqui P1–P2–P3</code>.
     </p>
     """,
     unsafe_allow_html=True,
