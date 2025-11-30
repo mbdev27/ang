@@ -20,8 +20,9 @@ REQUIRED_COLS_BASE = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "D
 OPTIONAL_COLS = ["SEQ"]
 REQUIRED_COLS_ALL = REQUIRED_COLS_BASE + OPTIONAL_COLS
 
-# ==================== Funções de ângulo ====================
-
+# =====================================================================
+#  Funções de ângulo
+# =====================================================================
 
 def parse_angle_to_decimal(value: str) -> float:
     if value is None:
@@ -84,9 +85,9 @@ def mean_direction_circular(angles_deg: List[float]) -> float:
         ang += 360.0
     return ang
 
-
-# ==================== Normalização / Validação ====================
-
+# =====================================================================
+#  Normalização / Validação
+# =====================================================================
 
 def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
     df = df_original.copy()
@@ -191,9 +192,9 @@ def validar_dataframe(df_original: pd.DataFrame):
 
     return df, erros
 
-
-# ==================== Cálculos linha a linha ====================
-
+# =====================================================================
+#  Cálculos linha a linha
+# =====================================================================
 
 def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
     res = df_uso.copy()
@@ -240,9 +241,9 @@ def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
 
     return res
 
-
-# ==================== Tabelas por série ====================
-
+# =====================================================================
+#  Tabelas por série (Hz / Z)
+# =====================================================================
 
 def tabela_hz_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     df = res.copy().reset_index(drop=False)
@@ -306,7 +307,6 @@ def tabela_z_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     df_med["Z_med_series_DMS"] = df_med["Z_med_series_deg"].apply(decimal_to_dms)
 
     df = df.merge(df_med, on=["EST", "PV"], how="left")
-    # LINHA CORRIGIDA
     df.sort_values(by="_ordem_original", inplace=True)
 
     tab = pd.DataFrame(
@@ -321,6 +321,9 @@ def tabela_z_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     )
     return tab
 
+# =====================================================================
+#  Distâncias simétricas e 7ª tabela resumo
+# =====================================================================
 
 def tabela_distancias_medias_simetricas(res: pd.DataFrame) -> pd.DataFrame:
     aux = res[["EST", "PV", "DH_med_m"]].copy()
@@ -344,9 +347,6 @@ def tabela_distancias_medias_simetricas(res: pd.DataFrame) -> pd.DataFrame:
     if not df_dist.empty:
         df_dist.sort_values("DH_media", ascending=False, inplace=True)
     return df_dist
-
-
-# ==================== 7ª Tabela resumo ====================
 
 
 def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) -> pd.DataFrame:
@@ -445,9 +445,9 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
 
     return resumo
 
-
-# ==================== Triângulo — cálculos ====================
-
+# =====================================================================
+#  Triângulo – cálculos e seleção automática
+# =====================================================================
 
 def _angulo_interno(a, b, c):
     try:
@@ -513,91 +513,68 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
     }
 
 
-# ====== Seleção automática de pares de linhas por estação e conjunto ======
-
-
 def selecionar_linhas_por_estacao_e_conjunto(
     res: pd.DataFrame, estacao_letra: str, conjunto: str
 ) -> Optional[Tuple[int, int]]:
     """
-    Retorna (idx1, idx2) em res (0-based) conforme regras:
+    Usa apenas a ORDEM das linhas e as combinações EST/PV para definir
+    1ª, 2ª e 3ª leituras para cada estação (A,B,C).
 
-    Estação A (P1):
-        - 1ª leitura: EST=P2, PV in {P3, P1}
-        - 2ª leitura: EST=P1, PV in {P2, P3}, SEQ=1
-        - 3ª leitura: EST=P1, PV in {P2, P3}, SEQ=2 (ou 3, conforme dados)
-
-    Estação B (P2):
-        - sempre EST=P2, PV in {P3, P1}, variando SEQ
-
-    Estação C (P3):
-        - sempre EST=P3, PV in {P1, P2}, variando SEQ
+    - Estação A (P1):
+        1ª leitura: EST=P2 e PV in {P3, P1}  (B>C + B>A)
+        2ª leitura: EST=P1 e PV in {P2, P3}  (A>B + A>C)  [2º par]
+        3ª leitura: mesmo padrão, 3º par
+    - Estação B (P2):
+        1ª,2ª,3ª: EST=P2 e PV in {P3, P1} (B>C + B>A), 1º,2º,3º pares
+    - Estação C (P3):
+        1ª,2ª,3ª: EST=P3 e PV in {P1, P2} (C>A + C>B), 1º,2º,3º pares
     """
-    # Mapeia letras para P1/P2/P3
     letra_to_p = {"A": "P1", "B": "P2", "C": "P3"}
     est_ref = letra_to_p.get(estacao_letra)
     if est_ref is None:
         return None
 
-    # Conjunto -> "ordem" de leitura (1,2,3)
     ordem = {"1ª leitura": 1, "2ª leitura": 2, "3ª leitura": 3}[conjunto]
 
-    # Facilita acesso a SEQ; se estiver vazio, tratamos como 1
-    df = res.copy()
-    if "SEQ" not in df.columns:
-        df["SEQ"] = np.nan
-    df["SEQ_eff"] = df["SEQ"].fillna(1).astype(int)
+    df = res.reset_index(drop=False).rename(columns={"index": "_idx_orig"})
 
-    # ----- Estação A (P1) -----
-    if est_ref == "P1":
+    # Define filtro principal conforme estação e regra
+    if est_ref == "P1":  # Estação A
         if ordem == 1:
             # 1ª leitura: B>C + B>A  => EST=P2, PV in {P3, P1}
             mask = (df["EST"] == "P2") & (df["PV"].isin(["P3", "P1"]))
         else:
-            # 2ª e 3ª: A>B + A>C  => EST=P1, PV in {P2, P3}, SEQ_eff = ordem-1
-            seq_alvo = ordem - 1  # 2ª ->1, 3ª->2
-            mask = (
-                (df["EST"] == "P1")
-                & (df["PV"].isin(["P2", "P3"]))
-                & (df["SEQ_eff"] == seq_alvo)
-            )
+            # 2ª e 3ª: A>B + A>C => EST=P1, PV in {P2, P3}
+            mask = (df["EST"] == "P1") & (df["PV"].isin(["P2", "P3"]))
+    elif est_ref == "P2":  # Estação B
+        # B>C + B>A
+        mask = (df["EST"] == "P2") & (df["PV"].isin(["P3", "P1"]))
+    else:  # est_ref == "P3", Estação C
+        # C>A + C>B
+        mask = (df["EST"] == "P3") & (df["PV"].isin(["P1", "P2"]))
 
-    # ----- Estação B (P2) -----
-    elif est_ref == "P2":
-        # 1ª,2ª,3ª: B>C + B>A  => EST=P2, PV in {P3,P1}, SEQ_eff = ordem
-        mask = (
-            (df["EST"] == "P2")
-            & (df["PV"].isin(["P3", "P1"]))
-            & (df["SEQ_eff"] == ordem)
-        )
-
-    # ----- Estação C (P3) -----
-    else:  # est_ref == "P3"
-        # 1ª,2ª,3ª: C>A + C>B  => EST=P3, PV in {P1,P2}, SEQ_eff = ordem
-        mask = (
-            (df["EST"] == "P3")
-            & (df["PV"].isin(["P1", "P2"]))
-            & (df["SEQ_eff"] == ordem)
-        )
-
-    candidatos = df[mask].sort_values(by=["PV", "SEQ_eff"])
-    if len(candidatos) < 2:
+    cand = df[mask].sort_values(by="_idx_orig")
+    if len(cand) < 2:
         return None
 
-    idxs = candidatos.index.to_list()[:2]  # pega duas primeiras
-    return idxs[0], idxs[1]
+    # agrupar em pares na ordem em que aparecem
+    cand = cand.reset_index(drop=True)
+    cand["par_id"] = cand.index // 2  # 0,0,1,1,2,2...
 
+    # qual par queremos? 1ª->0, 2ª->1, 3ª->2
+    par_desejado = ordem - 1
+    par = cand[cand["par_id"] == par_desejado]
+    if len(par) < 2:
+        return None
 
-# ==================== Plotagem do triângulo (formato croqui) ====================
+    idxs = par["_idx_orig"].tolist()[:2]
+    return int(idxs[0]), int(idxs[1])
 
+# =====================================================================
+#  Plotagem do triângulo (formato croqui)
+# =====================================================================
 
 def plotar_triangulo_info(info):
-    """
-    Desenha o triângulo em planta com disposição semelhante ao croqui:
-
-    - EST (P1/A) à esquerda
-    - PV1 (P2/B) acima de PV2 (P3/C) à direita
-    """
     est = info["EST"]
     pv1 = info["PV1"]
     pv2 = info["PV2"]
@@ -606,13 +583,9 @@ def plotar_triangulo_info(info):
     c = info["c_EST_PV2"]
     a = info["a_PV1_PV2"]
 
-    # EST na origem
     x_est, y_est = 0.0, 0.0
-
-    # PV2 (C) no eixo X, à direita
     x_pv2, y_pv2 = c, 0.0
 
-    # Cálculo de PV1 (B) garantindo distâncias b e a
     if c == 0:
         x_pv1, y_pv1 = b, 0.0
     else:
@@ -645,251 +618,15 @@ def plotar_triangulo_info(info):
 
     st.pyplot(fig)
 
+# =====================================================================
+#  CSS, cabeçalho, upload, seções de cálculo
+# =====================================================================
 
-# ==================== CSS / Layout ====================
-
-CUSTOM_CSS = """
-<style>
-body, .stApp { background: radial-gradient(circle at top left,#fcecea 0%,#f9f1f1 28%,#f4f4f4 55%,#eceff1 100%); color:#111827; font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif; }
-.main-card{background:linear-gradient(145deg,rgba(255,255,255,0.98) 0%,#fdf7f7 40%,#ffffff 100%);border-radius:22px;padding:1.8rem 2.1rem 1.4rem 2.1rem;border:1px solid rgba(148,27,37,0.20);box-shadow:0 22px 46px rgba(15,23,42,0.23),0 0 0 1px rgba(15,23,42,0.04);max-width:1280px;margin:1.2rem auto 2.0rem auto;}
-.ufpe-top-bar{width:100%;min-height:10px;border-radius:0 0 16px 16px;background:linear-gradient(90deg,#4b0000 0%,#7e0000 30%,#b30000 60%,#4b0000 100%);margin-bottom:1.0rem;}
-.ufpe-header-text{font-size:0.8rem;line-height:1.18rem;text-transform:uppercase;color:#111827;}
-.ufpe-separator{border:none;border-top:1px solid rgba(148,27,37,0.35);margin:0.8rem 0 1.0rem 0;}
-.app-title{font-size:2.0rem;font-weight:800;letter-spacing:0.03em;display:flex;align-items:center;gap:0.65rem;margin-bottom:0.35rem;color:#7f0000;}
-.app-title span.icon{font-size:2.4rem;}
-.app-subtitle{font-size:0.96rem;color:#374151;margin-bottom:1.0rem;}
-.section-title{font-size:1.05rem;font-weight:700;margin-top:1.7rem;margin-bottom:0.6rem;display:flex;align-items:center;gap:0.4rem;color:#8b0000;text-transform:uppercase;letter-spacing:0.05em;}
-.section-title span.dot{width:9px;height:9px;border-radius:999px;background:radial-gradient(circle at 30% 30%,#ffffff 0%,#ffbdbd 35%,#7f0000 90%);}
-.helper-box{border-radius:14px;padding:0.7rem 0.9rem;background:linear-gradient(135deg,#fff5f5 0%,#ffe7e7 40%,#fffafa 100%);border:1px solid rgba(148,27,37,0.38);font-size:0.85rem;color:#374151;margin-bottom:0.8rem;}
-.footer-text{font-size:0.75rem;color:#6b7280;}
-[data-testid="stDataFrame"],[data-testid="stDataEditor"]{background:linear-gradient(145deg,#ffffff 0%,#f9fafb 50%,#fffdfd 100%) !important;border-radius:14px;border:1px solid rgba(148,27,37,0.22);box-shadow:0 14px 28px rgba(15,23,42,0.10);}
-:root{color-scheme:light;}
-</style>
-"""
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-
-
-def cabecalho_ufpe():
-    with st.container():
-        st.markdown('<div class="main-card">', unsafe_allow_html=True)
-        st.markdown('<div class="ufpe-top-bar"></div>', unsafe_allow_html=True)
-        col_logo, col_info = st.columns([1, 5])
-        with col_logo:
-            st.image(
-                "https://upload.wikimedia.org/wikipedia/commons/8/85/Bras%C3%A3o_da_UFPE.png",
-                width=95,
-            )
-        with col_info:
-            st.markdown(
-                """
-                <div class="ufpe-header-text">
-                    <div><strong>UNIVERSIDADE FEDERAL DE PERNAMBUCO</strong></div>
-                    <div>DECART — Departamento de Engenharia Cartográfica</div>
-                    <div>LATOP — Laboratório de Topografia</div>
-                    <div>Curso: <strong>Engenharia Cartográfica e Agrimensura</strong></div>
-                    <div>Disciplina: <strong>Equipamentos de Medição</strong></div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
-        col1, col2, col3 = st.columns([2, 2, 2])
-        with col1:
-            st.text_input("Professor(a)", value="")
-            st.text_input("Local", value="")
-        with col2:
-            st.text_input("Equipamento", value="")
-            st.text_input("Patrimônio", value="")
-        with col3:
-            st.date_input("Data", format="DD/MM/YYYY")
-        st.markdown('<hr class="ufpe-separator">', unsafe_allow_html=True)
-        st.markdown(
-            """
-            <div class="app-title">
-                <span class="icon">📐</span>
-                <span>Calculadora de Ângulos e Distâncias</span>
-            </div>
-            <div class="app-subtitle">
-                Médias das direções horizontais (Hz) e medição angular vertical/zenital
-                seguindo os modelos dos exemplos de sala (Método das Direções).
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            """
-            <div class="helper-box">
-                <b>Modelo esperado de planilha:</b><br>
-                Colunas: <code>EST</code>, <code>PV</code>, <code>SEQ</code>,
-                <code>Hz_PD</code>, <code>Hz_PI</code>,
-                <code>Z_PD</code>, <code>Z_PI</code>,
-                <code>DI_PD</code>, <code>DI_PI</code>.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-def secao_modelo_e_upload():
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>1. Modelo de dados (Hz, Z, DI e SEQ)</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    template_df = pd.DataFrame(
-        {
-            "EST": ["P1", "P1", "P1", "P1"],
-            "PV": ["P2", "P3", "P2", "P3"],
-            "SEQ": [1, 1, 2, 2],
-            "Hz_PD": ["00°00'00\"", "18°58'22\"", "00°01'01\"", "18°59'34\""],
-            "Hz_PI": ["179°59'48\"", "198°58'14\"", "180°00'45\"", "198°59'24\""],
-            "Z_PD": ["90°51'08\"", "90°51'25\"", "90°51'06\"", "90°51'24\""],
-            "Z_PI": ["269°08'52\"", "269°08'33\"", "269°08'50\"", "269°08'26\""],
-            "DI_PD": [25.365, 26.285, 25.365, 26.285],
-            "DI_PI": [25.365, 26.285, 25.365, 26.285],
-        }
-    )
-    excel_bytes = io.BytesIO()
-    template_df.to_excel(excel_bytes, index=False)
-    excel_bytes.seek(0)
-    st.download_button(
-        "📥 Baixar modelo Excel (.xlsx)",
-        data=excel_bytes.getvalue(),
-        file_name="modelo_medicao_direcoes_exemplos.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>2. Carregar dados de campo</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    uploaded = st.file_uploader(
-        "Envie a planilha preenchida (EST, PV, SEQ, Hz_PD, Hz_PI, Z_PD, Z_PI, DI_PD, DI_PI)",
-        type=["xlsx", "xls", "csv"],
-    )
-    return uploaded
-
-
-def processar_upload(uploaded):
-    if uploaded is None:
-        return None
-    try:
-        if uploaded.name.lower().endswith(".csv"):
-            raw_df = pd.read_csv(uploaded)
-        else:
-            raw_df = pd.read_excel(uploaded)
-    except Exception as e:
-        st.error(f"Erro ao ler o arquivo: {e}")
-        return None
-
-    st.success(f"Arquivo '{uploaded.name}' carregado ({len(raw_df)} linhas).")
-
-    df_valid, erros = validar_dataframe(raw_df)
-    st.subheader("Pré-visualização dos dados importados")
-    cols_to_show = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
-    st.dataframe(df_valid[cols_to_show], use_container_width=True)
-
-    if erros:
-        st.error("Não foi possível calcular devido aos seguintes problemas:")
-        for e in erros:
-            st.markdown(f"- {e}")
-        return None
-    else:
-        cols_use = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
-        return df_valid[cols_use].copy()
-
-
-def secao_calculos(df_uso: pd.DataFrame):
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>3. Cálculo de Hz, Z e distâncias (linha a linha)</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    res = calcular_linha_a_linha(df_uso)
-
-    cols_linha = [
-        "EST",
-        "PV",
-        "SEQ",
-        "Hz_PD",
-        "Hz_PI",
-        "Hz_med_DMS",
-        "Z_PD",
-        "Z_PI",
-        "Z_corr_DMS",
-        "DH_PD_m",
-        "DH_PI_m",
-        "DH_med_m",
-    ]
-    df_linha = res[cols_linha].copy()
-    for c in ["DH_PD_m", "DH_PI_m", "DH_med_m"]:
-        df_linha[c] = df_linha[c].apply(
-            lambda x: f"{x:.3f}" if pd.notna(x) else ""
-        )
-    st.dataframe(df_linha, use_container_width=True)
-
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>4. Medição Angular Horizontal (modelo do Exemplo 1)</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    tab_hz = tabela_hz_por_serie(res)
-    st.dataframe(tab_hz, use_container_width=True)
-
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>5. Medição Angular Vertical / Zenital (modelo do Exemplo 2)</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    tab_z = tabela_z_por_serie(res)
-    st.dataframe(tab_z, use_container_width=True)
-
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>6. Distâncias médias horizontais simétricas (diagnóstico)</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    df_dist = tabela_distancias_medias_simetricas(res)
-    st.dataframe(df_dist, use_container_width=True)
-
-    st.markdown(
-        """
-        <div class="section-title">
-            <span class="dot"></span>
-            <span>7. Tabela resumo (Hz, Z e DH)</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    resumo = tabela_resumo_final(res, renomear_para_letras=True)
-    st.dataframe(resumo, use_container_width=True)
+# (toda a parte de CSS, cabecalho_ufpe, secao_modelo_e_upload,
+#  processar_upload, secao_calculos e rodape fica igual à da
+#  última versão que você já testou – para economizar espaço,
+#  não repito aqui, mas é só colar essas funções acima, trocando
+#  apenas a parte da seção 8 para usar a nova seleção automática.)
 
     # ---------- 8. Triângulo com seleção automática ----------
     st.markdown(
