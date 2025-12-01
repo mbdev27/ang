@@ -1,29 +1,131 @@
-# app.py
-# UFPE - Calculadora de Ângulos e Distâncias (Método das Direções para Triângulos)
-# Cabeçalho com identificação lida do Excel; download final em XLSX com figura em JPG.
+# app_unico.py
+# Aplicação Streamlit completa em um único arquivo
+# Calculadora de Ângulos e Distâncias – UFPE (método das direções)
 
 import io
 import math
+from datetime import datetime
 from typing import List, Optional, Tuple, Dict
 
 import numpy as np
 import pandas as pd
-import streamlit as st
 import matplotlib.pyplot as plt
+import streamlit as st
 
-st.set_page_config(
-    page_title="Calculadora de Ângulos e Distâncias | UFPE",
-    layout="wide",
-    page_icon="📐",
-)
+
+# =============================================================================
+# 1. FUNÇÕES AUXILIARES – IDENTIFICAÇÃO (equivalente ao utils.py)
+# =============================================================================
+
+def _parse_data_flex(valor):
+    """
+    Tenta interpretar 'valor' como data e devolver string no formato DD/MM/AAAA.
+    Retorna string vazia se não conseguir interpretar.
+    """
+    if pd.isna(valor):
+        return ""
+
+    if isinstance(valor, (datetime, pd.Timestamp)):
+        return valor.strftime("%d/%m/%Y")
+
+    s = str(valor).strip()
+    if s == "":
+        return ""
+
+    formatos = [
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d/%m/%y",
+        "%d-%m-%y",
+    ]
+    for fmt in formatos:
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+    try:
+        dt = pd.to_datetime(s, dayfirst=True, errors="coerce")
+        if pd.isna(dt):
+            return ""
+        return dt.strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
+def ler_identificacao_from_df(df_id: pd.DataFrame):
+    """
+    Lê a aba 'Identificação' do Excel em formato flexível:
+
+        Campo | Valor
+        ------+------
+        Professor(a) | ...
+        Equipamento  | ...
+        Dados        | ...
+        Local        | ...
+        Patrimônio   | ...
+
+    Retorna dicionário:
+      'Professor(a)', 'Equipamento', 'Dados', 'Local', 'Patrimônio'
+
+    Em que 'Dados' é string 'DD/MM/AAAA' ou ''.
+    """
+    info = {
+        "Professor(a)": "",
+        "Equipamento": "",
+        "Dados": "",
+        "Local": "",
+        "Patrimônio": "",
+    }
+
+    if df_id is None or df_id.empty:
+        return info
+
+    cols_lower = [str(c).strip().lower() for c in df_id.columns]
+    col_campo = None
+    col_valor = None
+    for i, c in enumerate(cols_lower):
+        if c in ["campo", "campos", "descricao", "descrição", "item"]:
+            col_campo = df_id.columns[i]
+        if c in ["valor", "valores", "dado"]:
+            col_valor = df_id.columns[i]
+
+    if col_campo is None:
+        col_campo = df_id.columns[0]
+    if col_valor is None:
+        col_valor = df_id.columns[1] if len(df_id.columns) > 1 else df_id.columns[0]
+
+    for _, row in df_id.iterrows():
+        campo = str(row.get(col_campo, "")).strip().lower()
+        valor = row.get(col_valor, "")
+
+        if "professor" in campo:
+            info["Professor(a)"] = str(valor).strip()
+        elif "equip" in campo:
+            info["Equipamento"] = str(valor).strip()
+        elif campo in ["data", "dados", "data dos dados", "data da atividade"]:
+            info["Dados"] = _parse_data_flex(valor)
+        elif "local" in campo:
+            info["Local"] = str(valor).strip()
+        elif ("patrim" in campo) or ("tomb" in campo):
+            info["Patrimônio"] = str(valor).strip()
+
+    return info
+
+
+# =============================================================================
+# 2. FUNÇÕES DE PROCESSAMENTO (equivalente ao processing.py)
+# =============================================================================
 
 REQUIRED_COLS_BASE = ["EST", "PV", "Hz_PD", "Hz_PI", "Z_PD", "Z_PI", "DI_PD", "DI_PI"]
 OPTIONAL_COLS = ["SEQ"]
 REQUIRED_COLS_ALL = REQUIRED_COLS_BASE + OPTIONAL_COLS
 
-# =====================================================================
-#  Funções de ângulo
-# =====================================================================
+
+# --------------------------- Ângulos ---------------------------
 
 def parse_angle_to_decimal(value: str) -> float:
     if value is None:
@@ -31,28 +133,32 @@ def parse_angle_to_decimal(value: str) -> float:
     s = str(value).strip()
     if s == "":
         return float("nan")
+
     try:
         if all(ch.isdigit() or ch in ".,-+" for ch in s):
             return float(s.replace(",", "."))
     except Exception:
         pass
-    for ch in ["°", "º", "'", "’", "´", "′", '"', "″"]:
+
+    for ch in ["°", "º", "'", "´", "′", '"', "″"]:
         s = s.replace(ch, " ")
     s = s.replace(",", ".")
-    parts = [p for p in s.split() if p != ""]
-    if not parts:
+    partes = [p for p in s.split() if p != ""]
+    if not partes:
         return float("nan")
+
     try:
-        deg = float(parts[0])
-        minutes = float(parts[1]) if len(parts) > 1 else 0.0
-        seconds = float(parts[2]) if len(parts) > 2 else 0.0
+        deg = float(partes[0])
+        minutos = float(partes[1]) if len(partes) > 1 else 0.0
+        segundos = float(partes[2]) if len(partes) > 2 else 0.0
     except Exception:
         return float("nan")
-    sign = 1.0
+
+    sinal = 1.0
     if deg < 0:
-        sign = -1.0
+        sinal = -1.0
         deg = abs(deg)
-    return sign * (deg + minutes / 60.0 + seconds / 3600.0)
+    return sinal * (deg + minutos / 60.0 + segundos / 3600.0)
 
 
 def decimal_to_dms(angle_deg: float) -> str:
@@ -86,13 +192,12 @@ def mean_direction_circular(angles_deg: List[float]) -> float:
         ang += 360.0
     return ang
 
-# =====================================================================
-#  Normalização / Validação
-# =====================================================================
+
+# ---------------------- Normalização / validação ----------------------
 
 def normalizar_colunas(df_original: pd.DataFrame) -> pd.DataFrame:
     df = df_original.copy()
-    colmap = {}
+    colmap: Dict[str, str] = {}
     for c in df.columns:
         low = c.strip().lower()
         if low in ["est", "estacao", "estação"]:
@@ -189,13 +294,13 @@ def validar_dataframe(df_original: pd.DataFrame):
                 return int(sx)
             except Exception:
                 return np.nan
+
         df["SEQ"] = df["SEQ"].apply(_parse_seq)
 
     return df, erros
 
-# =====================================================================
-#  Cálculos linha a linha
-# =====================================================================
+
+# --------------------------- Cálculo linha a linha ---------------------------
 
 def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
     res = df_uso.copy()
@@ -242,9 +347,8 @@ def calcular_linha_a_linha(df_uso: pd.DataFrame) -> pd.DataFrame:
 
     return res
 
-# =====================================================================
-#  Tabelas por série (Hz / Z)
-# =====================================================================
+
+# --------------------------- Tabelas Hz / Z ---------------------------
 
 def tabela_hz_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     df = res.copy().reset_index(drop=False)
@@ -257,9 +361,7 @@ def tabela_hz_por_serie(res: pd.DataFrame) -> pd.DataFrame:
             continue
         ref = float(sub["Hz_med_deg"].min())
         mask = df["EST"] == est
-        df.loc[mask, "Hz_reduzido_deg"] = (
-            (df.loc[mask, "Hz_med_deg"] - ref) % 360.0
-        )
+        df.loc[mask, "Hz_reduzido_deg"] = (df.loc[mask, "Hz_med_deg"] - ref) % 360.0
 
     df["Hz_reduzido_DMS"] = df["Hz_reduzido_deg"].apply(decimal_to_dms)
 
@@ -322,33 +424,8 @@ def tabela_z_por_serie(res: pd.DataFrame) -> pd.DataFrame:
     )
     return tab
 
-# =====================================================================
-#  Distâncias simétricas e Tabela resumo
-# =====================================================================
 
-def tabela_distancias_medias_simetricas(res: pd.DataFrame) -> pd.DataFrame:
-    aux = res[["EST", "PV", "DH_med_m"]].copy()
-    registros = {}
-
-    for _, row in aux.iterrows():
-        a = str(row["EST"])
-        b = str(row["PV"])
-        if a == b:
-            continue
-        par = tuple(sorted([a, b]))
-        dh = float(row["DH_med_m"])
-        registros.setdefault(par, []).append(dh)
-
-    linhas = []
-    for (a, b), valores in registros.items():
-        dh_med = float(np.mean(valores))
-        linhas.append({"PontoA": a, "PontoB": b, "DH_media": dh_med})
-
-    df_dist = pd.DataFrame(linhas)
-    if not df_dist.empty:
-        df_dist.sort_values("DH_media", ascending=False, inplace=True)
-    return df_dist
-
+# --------------------------- Resumo final ---------------------------
 
 def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) -> pd.DataFrame:
     tab_hz_full = tabela_hz_por_serie(res)
@@ -409,7 +486,7 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
         ]
     ].rename(
         columns={
-            "Média das séries": "Média das Séries (Hz)",
+            "Média das séries": "Média das séries (Hz)",
             "DH_med_str": "DH Médio (m)",
         }
     )
@@ -424,7 +501,7 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
                 "PV",
                 "Hz Médio",
                 "Hz Reduzido",
-                "Média das Séries (Hz)",
+                "Média das séries (Hz)",
                 "Z Corrigido",
                 "Média Z das séries",
                 "DH Médio (m)",
@@ -437,20 +514,18 @@ def tabela_resumo_final(res: pd.DataFrame, renomear_para_letras: bool = True) ->
                 "Ponto Visado",
                 "Hz Médio",
                 "Hz Reduzido",
-                "Média das Séries (Hz)",
+                "Média das séries (Hz)",
                 "Z Corrigido",
                 "Média Z das séries",
                 "DH Médio (m)",
             ]
         ]
-
     return resumo
 
-# =====================================================================
-#  Triângulo – cálculos e seleção automática
-# =====================================================================
 
-def _angulo_interno(a, b, c):
+# --------------------------- Triângulo ---------------------------
+
+def _angulo_interno(a: float, b: float, c: float) -> float:
     try:
         if a <= 0 or b <= 0 or c <= 0:
             return float("nan")
@@ -461,7 +536,52 @@ def _angulo_interno(a, b, c):
         return float("nan")
 
 
-def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
+def _media_dh_entre_pontos(res: pd.DataFrame, pa: str, pb: str) -> float:
+    vals = []
+    for _, r in res.iterrows():
+        e, v = str(r["EST"]), str(r["PV"])
+        if {e, v} == {pa, pb}:
+            vals.append(float(r["DH_med_m"]))
+    if not vals:
+        return float("nan")
+    return float(sum(vals) / len(vals))
+
+
+def _direcao_media(res: pd.DataFrame, est: str, pv: str) -> float:
+    vals = []
+    for _, r in res.iterrows():
+        if str(r["EST"]) == est and str(r["PV"]) == pv:
+            vals.append(float(r["Hz_med_deg"]))
+    if not vals:
+        return float("nan")
+    x = sum(math.cos(math.radians(a)) for a in vals)
+    y = sum(math.sin(math.radians(a)) for a in vals)
+    if x == 0 and y == 0:
+        return float("nan")
+    ang = math.degrees(math.atan2(y, x))
+    if ang < 0:
+        ang += 360
+    return ang
+
+
+def calcular_triangulo_duas_linhas(
+    res: pd.DataFrame,
+    idx1: int,
+    idx2: int,
+    estacao_op: str,
+    conjunto_op: str,
+) -> Optional[Dict]:
+    """
+    Usa duas linhas de 'res' para montar o triângulo.
+
+    Caso geral:
+      - estação = EST comum às duas linhas;
+      - PV1 e PV2 são os pontos visados.
+
+    Caso especial:
+      - se estacao_op == 'A' e conjunto_op == '1ª leitura':
+        estação geométrica forçada a P1; lados e direções P1–P2 e P1–P3.
+    """
     if idx1 == idx2:
         return None
     if idx1 < 0 or idx1 >= len(res) or idx2 < 0 or idx2 >= len(res):
@@ -473,56 +593,138 @@ def calcular_triangulo_duas_linhas(res: pd.DataFrame, idx1: int, idx2: int):
     est1, est2 = str(r1["EST"]), str(r2["EST"])
     pv1, pv2 = str(r1["PV"]), str(r2["PV"])
 
-    if est1 != est2:
-        return None
-    if pv1 == pv2:
-        return None
+    if estacao_op == "A" and conjunto_op == "1ª leitura":
+        est = "P1"
 
-    est = est1
-    b = float(r1["DH_med_m"])   # EST–PV1
-    c = float(r2["DH_med_m"])   # EST–PV2
-    hz1 = float(r1["Hz_med_deg"])
-    hz2 = float(r2["Hz_med_deg"])
+        AB = _media_dh_entre_pontos(res, "P1", "P2")
+        AC = _media_dh_entre_pontos(res, "P1", "P3")
+        if math.isnan(AB) or math.isnan(AC):
+            return None
 
-    alpha_deg = (hz2 - hz1) % 360.0
-    if alpha_deg > 180.0:
-        alpha_deg = 360.0 - alpha_deg
+        hz12 = _direcao_media(res, "P1", "P2")
+        hz13 = _direcao_media(res, "P1", "P3")
+        if math.isnan(hz12) or math.isnan(hz13):
+            return None
 
-    a = math.sqrt(
-        b**2 + c**2 - 2 * b * c * math.cos(math.radians(alpha_deg))
-    )
+        ang_A_deg = (hz13 - hz12) % 360.0
+        if ang_A_deg > 180.0:
+            ang_A_deg = 360.0 - ang_A_deg
 
-    ang_P1 = _angulo_interno(b, c, a)
-    ang_P2 = _angulo_interno(a, b, c)
-    ang_P3 = _angulo_interno(c, a, b)
+        BC = math.sqrt(
+            AB**2 + AC**2 - 2 * AB * AC * math.cos(math.radians(ang_A_deg))
+        )
 
-    s = (a + b + c) / 2.0
-    area = math.sqrt(max(s * (s - a) * (s - b) * (s - c), 0.0))
+        ang_B_deg = _angulo_interno(AC, AB, BC)  # em P2
+        ang_C_deg = _angulo_interno(AB, AC, BC)  # em P3
 
-    return {
-        "EST": est,
-        "PV1": pv1,
-        "PV2": pv2,
-        "b_EST_PV1": b,
-        "c_EST_PV2": c,
-        "a_PV1_PV2": a,
-        "alpha_EST_deg": alpha_deg,
-        "ang_P1_deg": ang_P1,
-        "ang_P2_deg": ang_P2,
-        "ang_P3_deg": ang_P3,
-        "area_m2": area,
-    }
+        s = (AB + AC + BC) / 2.0
+        area = math.sqrt(max(s * (s - AB) * (s - AC) * (s - BC), 0.0))
+
+        info: Dict[str, object] = {
+            "EST": "P1",
+            "PV1": "P2",
+            "PV2": "P3",
+            "AB": AB,
+            "AC": AC,
+            "BC": BC,
+            "ang_A_deg": ang_A_deg,
+            "ang_B_deg": ang_B_deg,
+            "ang_C_deg": ang_C_deg,
+            "area_m2": area,
+        }
+
+    else:
+        if est1 != est2 or pv1 == pv2:
+            return None
+
+        est = est1
+        AB = float(r1["DH_med_m"])  # EST–PV1
+        AC = float(r2["DH_med_m"])  # EST–PV2
+
+        hz1 = float(r1["Hz_med_deg"])
+        hz2 = float(r2["Hz_med_deg"])
+
+        ang_A_deg = (hz2 - hz1) % 360.0
+        if ang_A_deg > 180.0:
+            ang_A_deg = 360.0 - ang_A_deg
+
+        BC = math.sqrt(
+            AB**2 + AC**2 - 2 * AB * AC * math.cos(math.radians(ang_A_deg))
+        )
+
+        ang_B_deg = _angulo_interno(AC, AB, BC)
+        ang_C_deg = _angulo_interno(AB, AC, BC)
+
+        s = (AB + AC + BC) / 2.0
+        area = math.sqrt(max(s * (s - AB) * (s - AC) * (s - BC), 0.0))
+
+        info = {
+            "EST": est,
+            "PV1": pv1,
+            "PV2": pv2,
+            "AB": AB,
+            "AC": AC,
+            "BC": BC,
+            "ang_A_deg": ang_A_deg,
+            "ang_B_deg": ang_B_deg,
+            "ang_C_deg": ang_C_deg,
+            "area_m2": area,
+        }
+
+    mapa_p_letra = {"P1": "A", "P2": "B", "P3": "C"}
+
+    est = info["EST"]
+    pv1 = info["PV1"]
+    pv2 = info["PV2"]
+    AB = info["AB"]
+    AC = info["AC"]
+    BC = info["BC"]
+
+    lados_reais = [
+        (est, pv1, AB),
+        (est, pv2, AC),
+        (pv1, pv2, BC),
+    ]
+    lados_rotulados = []
+    for p_ini, p_fim, val in lados_reais:
+        letra_ini = mapa_p_letra.get(p_ini, p_ini)
+        letra_fim = mapa_p_letra.get(p_fim, p_fim)
+        rot = f"{letra_ini}{letra_fim}"
+        lados_rotulados.append((rot, p_ini, p_fim, val))
+
+    angulos_reais = [
+        (est, info["ang_A_deg"]),
+        (pv1, info["ang_B_deg"]),
+        (pv2, info["ang_C_deg"]),
+    ]
+    angulos_rotulados = []
+    for p_nome, val in angulos_reais:
+        letra = mapa_p_letra.get(p_nome, p_nome)
+        angulos_rotulados.append((letra, p_nome, val))
+
+    info["lados_ordenados"] = sorted(lados_rotulados, key=lambda x: x[3], reverse=True)
+    info["angulos_ordenados"] = sorted(angulos_rotulados, key=lambda x: x[2], reverse=True)
+    info["mapa_p_letra"] = mapa_p_letra
+
+    return info
 
 
 def selecionar_linhas_por_estacao_e_conjunto(
     res: pd.DataFrame, estacao_letra: str, conjunto: str
 ) -> Optional[Tuple[int, int]]:
+    """
+    Seleciona automaticamente duas linhas de 'res' para o triângulo, conforme
+    estação (A,B,C) e conjunto (1ª,2ª,3ª).
+    """
     letra_to_p = {"A": "P1", "B": "P2", "C": "P3"}
     est_ref = letra_to_p.get(estacao_letra)
     if est_ref is None:
         return None
 
-    ordem = {"1ª leitura": 1, "2ª leitura": 2, "3ª leitura": 3}[conjunto]
+    ordem_map = {"1ª leitura": 1, "2ª leitura": 2, "3ª leitura": 3}
+    ordem = ordem_map.get(conjunto)
+    if ordem is None:
+        return None
 
     df = res.reset_index(drop=False).rename(columns={"index": "_idx_orig"})
 
@@ -551,31 +753,73 @@ def selecionar_linhas_por_estacao_e_conjunto(
     idxs = par["_idx_orig"].tolist()[:2]
     return int(idxs[0]), int(idxs[1])
 
-# =====================================================================
-#  Plotagem do triângulo (retorna figura e buffer JPG)
-# =====================================================================
 
-def plotar_triangulo_info(info):
+def gerar_modelo_excel_bytes() -> bytes:
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+        df_id = pd.DataFrame(
+            {
+                "Campo": [
+                    "Professor(a)",
+                    "Equipamento",
+                    "Dados",
+                    "Local",
+                    "Patrimônio",
+                ],
+                "Valor": ["", "", "", "", ""],
+            }
+        )
+        df_id.to_excel(writer, sheet_name="Identificação", index=False)
+
+        df_dados = pd.DataFrame(
+            {
+                "EST": ["P1", "P1", "P1", "P1"],
+                "PV": ["P2", "P3", "P2", "P3"],
+                "SEQ": [1, 1, 2, 2],
+                "Hz_PD": ["00°00'00\"", "18°58'22\"", "00°01'01\"", "18°59'34\""],
+                "Hz_PI": ["179°59'48\"", "198°58'14\"", "180°00'45\"", "198°59'24\""],
+                "Z_PD": ["90°51'08\"", "90°51'25\"", "90°51'06\"", "90°51'24\""],
+                "Z_PI": ["269°08'52\"", "269°08'33\"", "269°08'50\"", "269°08'26\""],
+                "DI_PD": [25.365, 26.285, 25.365, 26.285],
+                "DI_PI": [25.365, 26.285, 25.365, 26.285],
+            }
+        )
+        df_dados.to_excel(writer, sheet_name="Dados", index=False)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+# =============================================================================
+# 3. PLOTAGEM E XLSX – (equivalente ao plotting.py)
+# =============================================================================
+
+def plotar_triangulo_info(info: Dict, estacao_op: str, conjunto_op: str):
+    """
+    Desenha o triângulo em planta.
+
+    - O vértice em (0,0) é info["EST"] (P1, P2 ou P3).
+    - Os outros vértices são PV1 e PV2.
+    """
     est = info["EST"]
     pv1 = info["PV1"]
     pv2 = info["PV2"]
 
-    b = info["b_EST_PV1"]
-    c = info["c_EST_PV2"]
-    a = info["a_PV1_PV2"]
+    AB = info["AB"]
+    AC = info["AC"]
+    BC = info["BC"]
 
-    x_est, y_est = 0.0, 0.0
-    x_pv2, y_pv2 = c, 0.0
+    x_E, y_E = 0.0, 0.0
+    x_V2, y_V2 = AC, 0.0
 
-    if c == 0:
-        x_pv1, y_pv1 = b, 0.0
+    if AC == 0:
+        x_V1, y_V1 = AB, 0.0
     else:
-        x_pv1 = (b**2 - a**2 + c**2) / (2 * c)
-        arg = max(b**2 - x_pv1**2, 0.0)
-        y_pv1 = math.sqrt(arg)
+        x_V1 = (AB**2 - BC**2 + AC**2) / (2 * AC)
+        arg = max(AB**2 - x_V1**2, 0.0)
+        y_V1 = math.sqrt(arg)
 
-    xs = [x_est, x_pv1, x_pv2, x_est]
-    ys = [y_est, y_pv1, y_pv2, y_est]
+    xs = [x_E, x_V1, x_V2, x_E]
+    ys = [y_E, y_V1, y_V2, y_E]
 
     fig, ax = plt.subplots()
     ax.plot(xs, ys, "-o", color="#7f0000")
@@ -583,46 +827,109 @@ def plotar_triangulo_info(info):
     fig.patch.set_facecolor("#ffffff")
     ax.set_aspect("equal", "box")
 
-    ax.text(x_est, y_est, f" {est}", fontsize=10, color="#111827")
-    ax.text(x_pv1, y_pv1, f" {pv1}", fontsize=10, color="#111827")
-    ax.text(x_pv2, y_pv2, f" {pv2}", fontsize=10, color="#111827")
+    ax.text(x_E, y_E, f"{est}", fontsize=10, color="#111827")
+    ax.text(x_V1, y_V1, f"{pv1}", fontsize=10, color="#111827")
+    ax.text(x_V2, y_V2, f"{pv2}", fontsize=10, color="#111827")
 
-    ax.text((x_est + x_pv1) / 2, (y_est + y_pv1) / 2,
-            f"{b:.3f} m", color="#374151", fontsize=9)
-    ax.text((x_est + x_pv2) / 2, (y_est + y_pv2) / 2,
-            f"{c:.3f} m", color="#374151", fontsize=9)
-    ax.text((x_pv1 + x_pv2) / 2, (y_pv1 + y_pv2) / 2,
-            f"{a:.3f} m", color="#374151", fontsize=9)
+    ax.text(
+        (x_E + x_V1) / 2,
+        (y_E + y_V1) / 2,
+        f"{est}–{pv1} = {AB:.3f} m",
+        color="#374151",
+        fontsize=9,
+    )
+    ax.text(
+        (x_E + x_V2) / 2,
+        (y_E + y_V2) / 2,
+        f"{est}–{pv2} = {AC:.3f} m",
+        color="#374151",
+        fontsize=9,
+    )
+    ax.text(
+        (x_V1 + x_V2) / 2,
+        (y_V1 + y_V2) / 2,
+        f"{pv1}–{pv2} = {BC:.3f} m",
+        color="#374151",
+        fontsize=9,
+    )
 
     ax.set_xlabel("X (m)", color="#111827")
     ax.set_ylabel("Y (m)", color="#111827")
     ax.tick_params(colors="#111827")
     ax.grid(True, linestyle="--", alpha=0.3, color="#9ca3af")
-    ax.set_title("Representação do triângulo em planta", color="#111827")
-
-    st.pyplot(fig)
+    ax.set_title(
+        "Representação do triângulo em planta (ponto de vista na estação)",
+        color="#111827",
+    )
 
     buf = io.BytesIO()
     fig.savefig(buf, format="jpg", dpi=200, bbox_inches="tight")
     buf.seek(0)
     plt.close(fig)
-    return buf
+    return buf, fig
 
-# =====================================================================
-#  CSS
-# =====================================================================
+
+def gerar_xlsx_com_figura(info_triangulo: Dict, figura_buf: io.BytesIO) -> bytes:
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        wb = writer.book
+
+        df_resumo = pd.DataFrame(
+            {
+                "Descrição": [
+                    "Lado estação–PV1",
+                    "Lado estação–PV2",
+                    "Lado PV1–PV2",
+                    "Ângulo interno na estação",
+                    "Ângulo interno no PV1",
+                    "Ângulo interno no PV2",
+                    "Área do triângulo (m²)",
+                ],
+                "Valor": [
+                    f"{info_triangulo['AB']:.3f} m",
+                    f"{info_triangulo['AC']:.3f} m",
+                    f"{info_triangulo['BC']:.3f} m",
+                    decimal_to_dms(info_triangulo["ang_A_deg"]),
+                    decimal_to_dms(info_triangulo["ang_B_deg"]),
+                    decimal_to_dms(info_triangulo["ang_C_deg"]),
+                    f"{info_triangulo['area_m2']:.3f}",
+                ],
+            }
+        )
+        df_resumo.to_excel(writer, sheet_name="ResumoTriangulo", index=False)
+
+        ws_fig = wb.add_worksheet("FiguraTriangulo")
+        writer.sheets["FiguraTriangulo"] = ws_fig
+        if figura_buf is not None:
+            ws_fig.insert_image("B2", "triangulo.jpg", {"image_data": figura_buf})
+
+    output.seek(0)
+    return output.getvalue()
+
+
+# =============================================================================
+# 4. INTERFACE STREAMLIT (tudo em um arquivo)
+# =============================================================================
+
+st.set_page_config(
+    page_title="Calculadora de Ângulos e Distâncias | UFPE",
+    layout="wide",
+    page_icon="📐",
+)
+
+# --------------------------- CSS ---------------------------
 
 CUSTOM_CSS = """
 <style>
 body, .stApp {
   background:#f3f4f6;
-  color:#111827;
+  color: #111827;
   font-family:"Trebuchet MS",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
 }
 
 .main-card{
   background:#ffffff;
-  color:#111827;
+  color: #111827;
   border-radius:22px;
   padding:1.4rem 2.0rem 1.4rem 2.0rem;
   border:1px solid rgba(148,27,37,0.20);
@@ -633,7 +940,7 @@ body, .stApp {
 .main-card p { text-align: justify; }
 
 .ufpe-header-band{
-  width:100%;
+  width: 100%;
   padding:0.7rem 1.0rem 0.6rem 1.0rem;
   border-radius:14px;
   background:linear-gradient(90deg,#4b0000 0%,#7e0000 40%,#b30000 75%,#4b0000 100%);
@@ -687,7 +994,7 @@ body, .stApp {
 
 .stButton>button, .stDownloadButton>button {
   background: #b30000;
-  color: #111827;
+  color: #ffffff;
   border-radius: 999px;
   border: 1px solid #7f0000;
   padding: 0.35rem 1.1rem;
@@ -709,184 +1016,78 @@ body, .stApp {
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# =====================================================================
-#  Leitura da aba de identificação
-# =====================================================================
 
-def _format_data_ddmmaaaa(raw: str) -> str:
-    if not raw:
-        return ""
-    s = str(raw).strip()
-    if s == "":
-        return ""
-    # tenta interpretar como data do pandas
-    try:
-        dt = pd.to_datetime(raw)
-        return dt.strftime("%d/%m/%Y")
-    except Exception:
-        # tenta formatos manuais comuns
-        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
-            try:
-                dt = pd.to_datetime(s, format=fmt)
-                return dt.strftime("%d/%m/%Y")
-            except Exception:
-                continue
-    return s  # se não conseguir, devolve como veio
+# --------------------------- Cabeçalho UFPE ---------------------------
 
-
-def ler_identificacao_from_df(df_id: pd.DataFrame) -> Dict[str, str]:
-    id_map = {
-        "Professor(a)": "",
-        "Equipamento": "",
-        "Data": "",
-        "Local": "",
-        "Patrimônio": "",
-    }
-    if df_id is None or df_id.empty:
-        return id_map
-
-    campo_col = None
-    valor_col = None
-    for c in df_id.columns:
-        if c.strip().lower() in ["campo", "campos"]:
-            campo_col = c
-        if c.strip().lower() in ["valor", "valores"]:
-            valor_col = c
-    if campo_col is None or valor_col is None:
-        return id_map
-
-    for _, row in df_id.iterrows():
-        campo = str(row[campo_col]).strip()
-        val_raw = "" if pd.isna(row[valor_col]) else row[valor_col]
-        if campo == "Data":
-            val = _format_data_ddmmaaaa(val_raw)
-        else:
-            val = "" if pd.isna(val_raw) else str(val_raw).strip()
-        if campo in id_map:
-            id_map[campo] = val
-    return id_map
-
-# =====================================================================
-#  Cabeçalho
-# =====================================================================
-
-def cabecalho_ufpe(info_id: Dict[str, str]):
+def cabecalho_ufpe(info_id):
     prof = info_id.get("Professor(a)", "")
     equip = info_id.get("Equipamento", "")
-    data = info_id.get("Data", "")
+    data_str = info_id.get("Dados", "")
     local = info_id.get("Local", "")
     patr = info_id.get("Patrimônio", "")
 
-    def linha(label, valor):
-        if valor:
-            return f"{label}: <u>{valor}</u><br>"
+    def linha(label, value):
+        if value:
+            return f"{label}: <u>{value}</u><br>"
         else:
             return f"{label}: _________________________________<br>"
 
-    with st.container():
-        st.markdown('<div class="main-card">', unsafe_allow_html=True)
+    st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-        st.markdown("<div class='ufpe-header-band'>", unsafe_allow_html=True)
-        col_logo, col_text = st.columns([1, 9])
-        with col_logo:
-            st.image(
-                "https://upload.wikimedia.org/wikipedia/commons/8/85/Bras%C3%A3o_da_UFPE.png",
-                width=70,
-            )
-        with col_text:
-            texto = (
-                "<div class='ufpe-header-text'>"
-                "<b>UNIVERSIDADE FEDERAL DE PERNAMBUCO - UFPE</b><br>"
-                "DECART — Departamento de Engenharia Cartográfica<br>"
-                "LATOP — Laboratório de Topografia<br>"
-                "Curso: Engenharia Cartográfica e Agrimensura<br>"
-                "Disciplina: Equipamentos de Medição<br>"
-                f"{linha('Professor(a)', prof)}"
-                f"{linha('Equipamento', equip)}"
-                f"{linha('Data', data)}"
-                f"{linha('Local', local)}"
-                f"{linha('Patrimônio', patr)}"
-                "</div>"
-            )
-            st.markdown(texto, unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        # Título atualizado
-        st.markdown(
-            """
-            <p style="margin-top:0.9rem;font-size:1.5rem;font-weight:800;color:#7f0000;">
-                Calculadora de Ângulos e Distâncias – Método das Direções para Triângulos
-            </p>
-            <p style="font-size:0.92rem;">
-                Esta ferramenta auxilia no processamento das leituras obtidas com estação total,
-                calculando médias de direções horizontais (Hz), ângulos verticais/zenitais, distâncias
-                horizontais médias e a geometria do triângulo formado pelos pontos P1, P2 e P3.
-            </p>
-            """,
-            unsafe_allow_html=True,
+    st.markdown("<div class='ufpe-header-band'>", unsafe_allow_html=True)
+    col_logo, col_text = st.columns([1, 9])
+    with col_logo:
+        st.image(
+            "https://upload.wikimedia.org/wikipedia/commons/8/85/Bras%C3%A3o_da_UFPE.png",
+            width=70,
         )
-
-        st.markdown(
-            """
-            <div class="helper-box">
-                <b>Preenchimento dos dados de identificação:</b><br>
-                Os campos Professor(a), Equipamento, Data, Local e Patrimônio são
-                lidos automaticamente da aba <b>Identificacao</b> do modelo Excel.
-                A data é exibida no formato <b>DD/MM/AAAA</b>. Caso algum campo venha em branco,
-                ele poderá ser completado manualmente no arquivo exportado.
-            </div>
-            """,
-            unsafe_allow_html=True,
+    with col_text:
+        texto = (
+            "<div class='ufpe-header-text'>"
+            "<b>UNIVERSIDADE FEDERAL DE PERNAMBUCO - UFPE</b><br>"
+            "DECART — Departamento de Engenharia Cartográfica<br>"
+            "LATOP — Laboratório de Topografia<br>"
+            "Curso: Engenharia Cartográfica e Agrimensura<br>"
+            "Disciplina: Equipamentos de Medição<br>"
+            f"{linha('Professor(a)', prof)}"
+            f"{linha('Equipamento', equip)}"
+            f"{linha('Data', data_str)}"
+            f"{linha('Local', local)}"
+            f"{linha('Patrimônio', patr)}"
+            "</div>"
         )
+        st.markdown(texto, unsafe_allow_html=True)
 
-# =====================================================================
-#  Modelo de Excel (duas abas)
-# =====================================================================
+    st.markdown("</div>", unsafe_allow_html=True)
 
-def gerar_modelo_excel():
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
-        # Aba Identificacao
-        df_id = pd.DataFrame(
-            {
-                "Campo": [
-                    "Professor(a)",
-                    "Equipamento",
-                    "Data",
-                    "Local",
-                    "Patrimônio",
-                ],
-                "Valor": ["", "", "", "", ""],
-            }
-        )
-        df_id.to_excel(writer, sheet_name="Identificacao", index=False)
+    st.markdown(
+        """
+        <p style="margin-top:0.9rem;font-size:1.5rem;font-weight:800;color:#7f0000;">
+            Calculadora de Ângulos e Distâncias – Método das Direções para Triângulos
+        </p>
+        <p style="font-size:0.92rem;">
+            Esta ferramenta auxilia no processamento das leituras obtidas com estação total,
+            calculando médias de direções horizontais (Hz), ângulos verticais/zenitais,
+            distâncias horizontais médias e a geometria do triângulo formado pelos
+            pontos P1, P2 e P3.
+        </p>
+        <div class="helper-box">
+            <b>Preenchimento dos dados de identificação:</b><br>
+            Os campos Professor(a), Equipamento, Dados, Local e Patrimônio são lidos
+            automaticamente da aba <b>Identificação</b> do modelo Excel. Os dados são exibidos
+            no formato <b>DD/MM/AAAA</b>. Caso algum campo venha em branco, ele pode ser
+            completado manualmente no arquivo exportado.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-        # Aba Dados
-        df_dados = pd.DataFrame(
-            {
-                "EST": ["P1", "P1", "P1", "P1"],
-                "PV": ["P2", "P3", "P2", "P3"],
-                "SEQ": [1, 1, 2, 2],
-                "Hz_PD": ["00°00'00\"", "18°58'22\"", "00°01'01\"", "18°59'34\""],
-                "Hz_PI": ["179°59'48\"", "198°58'14\"", "180°00'45\"", "198°59'24\""],
-                "Z_PD": ["90°51'08\"", "90°51'25\"", "90°51'06\"", "90°51'24\""],
-                "Z_PI": ["269°08'52\"", "269°08'33\"", "269°08'50\"", "269°08'26\""],
-                "DI_PD": [25.365, 26.285, 25.365, 26.285],
-                "DI_PI": [25.365, 26.285, 25.365, 26.285],
-            }
-        )
-        df_dados.to_excel(writer, sheet_name="Dados", index=False)
 
-    buf.seek(0)
-    return buf.getvalue()
+# --------------------------- Página 1 – modelo + upload ---------------------------
 
-# =====================================================================
-#  Upload / leitura
-# =====================================================================
+def pagina_carregar_dados():
+    st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-def secao_modelo_e_upload():
-    # 1. Modelo de planilha
     st.markdown(
         """
         <div class="section-title">
@@ -896,8 +1097,7 @@ def secao_modelo_e_upload():
         """,
         unsafe_allow_html=True,
     )
-
-    modelo_bytes = gerar_modelo_excel()
+    modelo_bytes = gerar_modelo_excel_bytes()
     st.download_button(
         "📥 Baixar modelo Excel (.xlsx)",
         data=modelo_bytes,
@@ -907,14 +1107,13 @@ def secao_modelo_e_upload():
     st.markdown(
         """
         <p style="font-size:0.9rem;">
-        O modelo contém duas abas: <b>Identificacao</b> (dados do cabeçalho)
-        e <b>Dados</b> (leituras Hz, Z e distâncias). Preencha ambas conforme necessário.
+        O modelo contém duas abas: <b>Identificação</b> (dados do cabeçalho)
+        e <b>Dados</b> (leituras Hz, Z e distâncias).
         </p>
         """,
         unsafe_allow_html=True,
     )
 
-    # 2. Carregar dados de campo
     st.markdown(
         """
         <div class="section-title">
@@ -924,39 +1123,36 @@ def secao_modelo_e_upload():
         """,
         unsafe_allow_html=True,
     )
-
     uploaded = st.file_uploader(
-        "Envie o arquivo Excel preenchido (com abas Identificacao e Dados)",
+        "Envie o arquivo Excel (com abas Identificação e Dados)",
         type=["xlsx", "xls"],
     )
-    return uploaded
-
-def processar_upload(uploaded) -> Tuple[Optional[pd.DataFrame], Dict[str, str]]:
-    info_id: Dict[str, str] = {
-        "Professor(a)": "",
-        "Equipamento": "",
-        "Data": "",
-        "Local": "",
-        "Patrimônio": "",
-    }
 
     if uploaded is None:
-        return None, info_id
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
 
     try:
         xls = pd.ExcelFile(uploaded)
 
-        # aba Identificacao
+        # Identificação
         sheet_id = None
         for s in xls.sheet_names:
-            if s.strip().lower() in ["identificacao", "identificação"]:
+            if s.strip().lower() in ["identificação", "identificacao"]:
                 sheet_id = s
                 break
+        info_id = {
+            "Professor(a)": "",
+            "Equipamento": "",
+            "Dados": "",
+            "Local": "",
+            "Patrimônio": "",
+        }
         if sheet_id is not None:
             df_id = pd.read_excel(xls, sheet_name=sheet_id)
             info_id = ler_identificacao_from_df(df_id)
 
-        # aba Dados (obrigatória)
+        # Dados
         sheet_dados = None
         for s in xls.sheet_names:
             if s.strip().lower() in ["dados", "medicoes", "medições"]:
@@ -966,19 +1162,17 @@ def processar_upload(uploaded) -> Tuple[Optional[pd.DataFrame], Dict[str, str]]:
             sheet_dados = xls.sheet_names[0]
 
         raw_df = pd.read_excel(xls, sheet_name=sheet_dados)
-
     except Exception as e:
         st.error(f"Erro ao ler o arquivo: {e}")
-        return None, info_id
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
 
     st.success(
-        f"Arquivo '{uploaded.name}' carregado. "
-        f"Aba de dados utilizada: '{sheet_dados}'."
+        f"Arquivo '{uploaded.name}' carregado. Aba de dados utilizada: '{sheet_dados}'."
     )
 
     df_valid, erros = validar_dataframe(raw_df)
 
-    # Pré-visualização (título ajustado)
     st.subheader("Pré-visualização dos dados importados")
     cols_to_show = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
     st.dataframe(df_valid[cols_to_show], use_container_width=True)
@@ -987,18 +1181,41 @@ def processar_upload(uploaded) -> Tuple[Optional[pd.DataFrame], Dict[str, str]]:
         st.error("Não foi possível calcular devido aos seguintes problemas:")
         for e in erros:
             st.markdown(f"- {e}")
-        return None, info_id
-    else:
-        cols_use = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
-        return df_valid[cols_use].copy(), info_id
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
 
-# =====================================================================
-#  Seções de cálculo e triângulo
-# =====================================================================
+    cols_use = [c for c in REQUIRED_COLS_ALL if c in df_valid.columns]
+    df_uso = df_valid[cols_use].copy()
 
-def secao_calculos(df_uso: pd.DataFrame):
-    # 3. Cálculo de Hz, Z e distâncias (linha a linha)
-    st.markdown(
+    st.session_state["df_uso"] = df_uso
+    st.session_state["info_id"] = info_id
+
+    if st.button("Ir para processamento"):
+        st.session_state["pagina"] = "processamento"
+        st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# --------------------------- Página 2 – processamento ---------------------------
+
+def pagina_processamento():
+    if "df_uso" not in st.session_state or "info_id" not in st.session_state:
+        st.warning("Nenhum dado carregado. Volte à página 'Carregar dados' primeiro.")
+        if st.button("Voltar para carregar dados"):
+            st.session_state["pagina"] = "carregar"
+            st.rerun()
+        return
+
+    df_uso = st.session_state["df_uso"]
+    info_id = st.session_state["info_id"]
+
+    cabecalho_ufpe(info_id)
+
+    st_local = st
+
+    # 3. Linha a linha
+    st_local.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
@@ -1007,7 +1224,6 @@ def secao_calculos(df_uso: pd.DataFrame):
         """,
         unsafe_allow_html=True,
     )
-
     res = calcular_linha_a_linha(df_uso)
 
     cols_linha = [
@@ -1029,10 +1245,10 @@ def secao_calculos(df_uso: pd.DataFrame):
         df_linha[c] = df_linha[c].apply(
             lambda x: f"{x:.3f}" if pd.notna(x) else ""
         )
-    st.dataframe(df_linha, use_container_width=True)
+    st_local.dataframe(df_linha, use_container_width=True)
 
-    # 4. Medição Angular Horizontal
-    st.markdown(
+    # 4. Hz
+    st_local.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
@@ -1042,10 +1258,10 @@ def secao_calculos(df_uso: pd.DataFrame):
         unsafe_allow_html=True,
     )
     tab_hz = tabela_hz_por_serie(res)
-    st.dataframe(tab_hz, use_container_width=True)
+    st_local.dataframe(tab_hz, use_container_width=True)
 
-    # 5. Medição Angular Vertical / Zenital
-    st.markdown(
+    # 5. Z
+    st_local.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
@@ -1055,10 +1271,10 @@ def secao_calculos(df_uso: pd.DataFrame):
         unsafe_allow_html=True,
     )
     tab_z = tabela_z_por_serie(res)
-    st.dataframe(tab_z, use_container_width=True)
+    st_local.dataframe(tab_z, use_container_width=True)
 
-    # 6. Tabela resumo (Hz, Z e DH)
-    st.markdown(
+    # 6. Resumo
+    st_local.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
@@ -1068,10 +1284,10 @@ def secao_calculos(df_uso: pd.DataFrame):
         unsafe_allow_html=True,
     )
     resumo = tabela_resumo_final(res, renomear_para_letras=True)
-    st.dataframe(resumo, use_container_width=True)
+    st_local.dataframe(resumo, use_container_width=True)
 
-    # 7. TRIÂNGULO SELECIONADO (CONJUNTO AUTOMÁTICO DE MEDIÇÕES)
-    st.markdown(
+    # 7. Triângulo
+    st_local.markdown(
         """
         <div class="section-title">
             <span class="dot"></span>
@@ -1081,150 +1297,102 @@ def secao_calculos(df_uso: pd.DataFrame):
         unsafe_allow_html=True,
     )
 
-    col_a, col_b = st.columns(2)
+    col_a, col_b = st_local.columns(2)
     with col_a:
-        estacao_op = st.selectbox("Estação (A, B, C)", ["A", "B", "C"])
+        estacao_op = st_local.selectbox("Estação (A, B, C)", ["A", "B", "C"])
     with col_b:
-        conjunto_op = st.selectbox(
+        conjunto_op = st_local.selectbox(
             "Conjunto de leituras",
             ["1ª leitura", "2ª leitura", "3ª leitura"],
         )
 
-    st.markdown(
-        "<p>O programa seleciona automaticamente o par de leituras adequado "
+    st_local.markdown(
+        "<p>O programa seleciona automaticamente o par de leituras adequadas "
         "para formar o triângulo, conforme as regras definidas para cada estação.</p>",
         unsafe_allow_html=True,
     )
 
-    info = None
-    img_buf = None
-
-    if st.button("Gerar triângulo"):
+    if st_local.button("Gerar triângulo"):
         pares = selecionar_linhas_por_estacao_e_conjunto(res, estacao_op, conjunto_op)
         if pares is None:
-            st.error(
+            st_local.error(
                 "Não foi possível encontrar duas leituras compatíveis para "
                 f"Estação {estacao_op} e {conjunto_op}. "
                 "Verifique se a ordem das linhas (EST, PV) segue o modelo."
             )
         else:
             idx1, idx2 = pares
-            info = calcular_triangulo_duas_linhas(res, idx1, idx2)
+            info = calcular_triangulo_duas_linhas(res, idx1, idx2, estacao_op, conjunto_op)
             if info is None:
-                st.error("Falha ao calcular o triângulo a partir das leituras selecionadas.")
+                st_local.error(
+                    "Falha ao calcular o triângulo a partir das leituras selecionadas."
+                )
             else:
                 est = info["EST"]
                 pv1 = info["PV1"]
                 pv2 = info["PV2"]
 
-                st.markdown(
-                    f"<p><b>Triângulo formado automaticamente por {est}, {pv1} e {pv2} "
-                    f"({conjunto_op} na Estação {estacao_op}).</b></p>",
+                st_local.markdown(
+                    f"<p><b>Triângulo formado automaticamente pelos pontos {est}, {pv1} e {pv2} "
+                    f"(conjunto: {conjunto_op}, estação selecionada: {estacao_op}).</b></p>",
                     unsafe_allow_html=True,
                 )
 
-                col1, col2 = st.columns(2)
+                lados_ord = info.get("lados_ordenados", [])
+                ang_ord = info.get("angulos_ordenados", [])
+
+                col1, col2 = st_local.columns(2)
                 with col1:
-                    st.markdown("**Lados (m):**")
-                    st.markdown(
-                        f"- {est}–{pv1}: `{info['b_EST_PV1']:.3f}` m\n"
-                        f"- {est}–{pv2}: `{info['c_EST_PV2']:.3f}` m\n"
-                        f"- {pv1}–{pv2}: `{info['a_PV1_PV2']:.3f}` m"
-                    )
-                    st.markdown("**Ângulos internos:**")
-                    st.markdown(
-                        f"- Em P1: `{decimal_to_dms(info['ang_P1_deg'])}`\n"
-                        f"- Em P2: `{decimal_to_dms(info['ang_P2_deg'])}`\n"
-                        f"- Em P3: `{decimal_to_dms(info['ang_P3_deg'])}`"
-                    )
-                    st.markdown(
-                        f"**Área do triângulo:** `{info['area_m2']:.3f}` m²"
+                    st_local.markdown("**Lados (m) – do maior para o menor:**")
+                    linhas_lados = []
+                    for rot, p_ini, p_fim, val in lados_ord:
+                        linhas_lados.append(
+                            f"- {p_ini}–{p_fim} ({rot}): ` {val:.3f} ` m"
+                        )
+                    st_local.markdown("\n".join(linhas_lados))
+
+                    st_local.markdown("**Ângulos internos – do maior para o menor:**")
+                    linhas_ang = []
+                    for letra, p_nome, val in ang_ord:
+                        linhas_ang.append(
+                            f"- Em {p_nome} ({letra}): ` {decimal_to_dms(val)} `"
+                        )
+                    st_local.markdown("\n".join(linhas_ang))
+
+                    st_local.markdown(
+                        f"**Área do triângulo:** ` {info['area_m2']:.3f} ` m²"
                     )
 
                 with col2:
-                    img_buf = plotar_triangulo_info(info)
+                    img_buf, fig = plotar_triangulo_info(info, estacao_op, conjunto_op)
+                    st_local.pyplot(fig)
 
-    return info, img_buf
+                xlsx_bytes = gerar_xlsx_com_figura(info, img_buf)
+                st_local.download_button(
+                    "📊 Baixar XLSX com resumo e figura do triângulo",
+                    data=xlsx_bytes,
+                    file_name="triangulo_ufpe_resumo_figura.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
 
-# =====================================================================
-#  Exportação em XLSX com figura JPG e rodapé
-# =====================================================================
-
-def gerar_xlsx_com_figura(info_triangulo, figura_buf):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        wb = writer.book
-
-        df_resumo = pd.DataFrame(
-            {
-                "Descrição": [
-                    "Lado EST–PV1",
-                    "Lado EST–PV2",
-                    "Lado PV1–PV2",
-                    "Ângulo interno em P1",
-                    "Ângulo interno em P2",
-                    "Ângulo interno em P3",
-                    "Área do triângulo (m²)",
-                ],
-                "Valor": [
-                    f"{info_triangulo['b_EST_PV1']:.3f} m",
-                    f"{info_triangulo['c_EST_PV2']:.3f} m",
-                    f"{info_triangulo['a_PV1_PV2']:.3f} m",
-                    decimal_to_dms(info_triangulo["ang_P1_deg"]),
-                    decimal_to_dms(info_triangulo["ang_P2_deg"]),
-                    decimal_to_dms(info_triangulo["ang_P3_deg"]),
-                    f"{info_triangulo['area_m2']:.3f}",
-                ],
-            }
-        )
-        df_resumo.to_excel(writer, sheet_name="ResumoTriangulo", index=False)
-
-        ws_fig = wb.add_worksheet("FiguraTriangulo")
-        writer.sheets["FiguraTriangulo"] = ws_fig
-        if figura_buf is not None:
-            ws_fig.insert_image("B2", "triangulo.jpg", {"image_data": figura_buf})
-
-    output.seek(0)
-    return output.getvalue()
-
-def rodape(info_triangulo, figura_buf):
-    st.markdown(
+    st_local.markdown(
         """
         <p class="footer-text">
-            Versão do app: <code>UFPE_v15 — título para triângulos, data DD/MM/AAAA,
-            seções renumeradas, download em XLSX com resumo e figura em JPG.</code>.
+            Versão (arquivo único): <code>UFPE_v21_single — triângulo com ponto de vista na estação real (P1/P2/P3),
+            croqui sem letras A/B/C nos vértices, caso especial Estação A / 1ª leitura com P1 na base esquerda (0,0),
+            cabeçalho com data em formato DD/MM/AAAA.</code>
         </p>
         """,
         unsafe_allow_html=True,
     )
 
-    if info_triangulo is not None and figura_buf is not None:
-        xlsx_bytes = gerar_xlsx_com_figura(info_triangulo, figura_buf)
-        st.download_button(
-            "📊 Baixar XLSX com resumo e figura do triângulo",
-            data=xlsx_bytes,
-            file_name="triangulo_ufpe_resumo_figura.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-    else:
-        st.info(
-            "Para habilitar o download do XLSX com a figura, primeiro gere um triângulo "
-            "na seção 7."
-        )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+# --------------------------- Router de “páginas” ---------------------------
 
-# =====================================================================
-#  Execução
-# =====================================================================
+if "pagina" not in st.session_state:
+    st.session_state["pagina"] = "carregar"
 
-uploaded = secao_modelo_e_upload()
-df_uso, info_id = processar_upload(uploaded)
-cabecalho_ufpe(info_id)
-
-tri_info = None
-tri_fig_buf = None
-if df_uso is not None:
-    tri_info, tri_fig_buf = secao_calculos(df_uso)
-
-rodape(tri_info, tri_fig_buf)
+if st.session_state["pagina"] == "carregar":
+    pagina_carregar_dados()
+else:
+    pagina_processamento()
